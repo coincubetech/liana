@@ -1,15 +1,15 @@
+pub mod buysell;
 mod coins;
 pub mod export;
 mod label;
+#[cfg(feature = "dev-meld")]
+pub mod meld_buysell;
 mod psbt;
 mod psbts;
 mod receive;
 mod settings;
 mod spend;
 mod transactions;
-pub mod buysell;
-#[cfg(feature = "dev-meld")]
-pub mod meld_buysell;
 
 use std::convert::TryInto;
 use std::sync::Arc;
@@ -36,6 +36,7 @@ use crate::daemon::{
     model::{remaining_sequence, Coin, HistoryTransaction, Payment},
     Daemon,
 };
+pub use buysell::BuyAndSellPanel;
 pub use coins::CoinsPanel;
 use label::LabelsEdited;
 pub use psbts::PsbtsPanel;
@@ -43,7 +44,6 @@ pub use receive::ReceivePanel;
 pub use settings::SettingsState;
 pub use spend::CreateSpendPanel;
 pub use transactions::TransactionsPanel;
-pub use buysell::BuyAndSellPanel;
 
 pub trait State {
     fn view<'a>(&'a self, cache: &'a Cache) -> Element<'a, view::Message>;
@@ -70,9 +70,7 @@ pub trait State {
 
 /// redirect to another state with a message menu
 pub fn redirect(menu: Menu) -> Task<Message> {
-    Task::perform(async { menu }, |menu| {
-        Message::View(view::Message::Menu(menu))
-    })
+    Task::done(Message::View(view::Message::Menu(menu)))
 }
 
 /// Returns the confirmed and unconfirmed balances from `coins`, as well

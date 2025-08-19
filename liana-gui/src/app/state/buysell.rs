@@ -1,14 +1,14 @@
 use iced::Task;
 use std::sync::Arc;
 
-use liana_ui::{widget::Element, component::form};
+use liana_ui::{component::form, widget::Element};
 
 use crate::{
     app::{
         cache::Cache,
         message::Message,
         state::State,
-        view::{buysell::buysell_view, BuySellMessage, Message as ViewMessage},
+        view::{self, buysell::buysell_view, BuySellMessage, Message as ViewMessage},
         wallet::Wallet,
     },
     daemon::Daemon,
@@ -121,7 +121,8 @@ impl BuyAndSellPanel {
         match field {
             "first_name" => {
                 self.form_data.first_name.value = value;
-                self.form_data.first_name.valid = !self.form_data.first_name.value.trim().is_empty();
+                self.form_data.first_name.valid =
+                    !self.form_data.first_name.value.trim().is_empty();
             }
             "last_name" => {
                 self.form_data.last_name.value = value;
@@ -136,8 +137,8 @@ impl BuyAndSellPanel {
                 self.form_data.password.valid = self.form_data.password.value.len() >= 8;
                 // Re-validate confirm password when password changes
                 self.form_data.confirm_password.valid =
-                    !self.form_data.confirm_password.value.is_empty() &&
-                    self.form_data.password.value == self.form_data.confirm_password.value;
+                    !self.form_data.confirm_password.value.is_empty()
+                        && self.form_data.password.value == self.form_data.confirm_password.value;
             }
             "confirm_password" => {
                 self.form_data.confirm_password.value = value;
@@ -190,46 +191,39 @@ impl State for BuyAndSellPanel {
         message: Message,
     ) -> Task<Message> {
         match message {
-            Message::View(ViewMessage::BuySell(BuySellMessage::ShowModal)) => {
-                self.show_modal();
-                Task::none()
-            }
+            Message::View(ViewMessage::BuySell(BuySellMessage::ShowModal)) => self.show_modal(),
             Message::View(ViewMessage::BuySell(BuySellMessage::CloseModal)) => {
                 self.close_modal();
-                Task::none()
+                return Task::done(Message::View(view::Message::Menu(
+                    crate::app::menu::Menu::Home,
+                )));
             }
             Message::View(ViewMessage::BuySell(BuySellMessage::ShowAccountSelection)) => {
-                self.show_account_selection();
-                Task::none()
+                self.show_account_selection()
             }
             Message::View(ViewMessage::BuySell(BuySellMessage::HideAccountSelection)) => {
-                self.hide_account_selection();
-                Task::none()
+                self.hide_account_selection()
             }
-            Message::View(ViewMessage::BuySell(BuySellMessage::SelectAccountType(account_type))) => {
-                self.select_account_type(account_type);
-                Task::none()
-            }
+            Message::View(ViewMessage::BuySell(BuySellMessage::SelectAccountType(
+                account_type,
+            ))) => self.select_account_type(account_type),
             Message::View(ViewMessage::BuySell(BuySellMessage::GetStarted)) => {
-                self.get_started()
+                return self.get_started()
             }
-            Message::View(ViewMessage::BuySell(BuySellMessage::GoBack)) => {
-                self.go_back();
-                Task::none()
-            }
+            Message::View(ViewMessage::BuySell(BuySellMessage::GoBack)) => self.go_back(),
             Message::View(ViewMessage::BuySell(BuySellMessage::FormFieldEdited(field, value))) => {
-                self.update_form_field(&field, value);
-                Task::none()
+                self.update_form_field(&field, value)
             }
             Message::View(ViewMessage::BuySell(BuySellMessage::ToggleTermsAcceptance)) => {
-                self.toggle_terms_acceptance();
-                Task::none()
+                self.toggle_terms_acceptance()
             }
             Message::View(ViewMessage::BuySell(BuySellMessage::CreateAccount)) => {
-                self.create_account()
+                return self.create_account()
             }
-            _ => Task::none(),
-        }
+            _ => (),
+        };
+
+        Task::none()
     }
 
     fn reload(
@@ -243,5 +237,4 @@ impl State for BuyAndSellPanel {
     fn subscription(&self) -> iced::Subscription<Message> {
         iced::Subscription::none()
     }
-    
 }
