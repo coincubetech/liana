@@ -131,16 +131,17 @@ jobs:
         run: |
           echo "$P12_BASE64" | base64 -d > signing_certificate.p12
           echo "$P12_PASSWORD" > signing_certificate.password
-          rcodesign sign --p12-file signing_certificate.p12 --p12-password-file signing_certificate.password Vault.app
+          rcodesign sign --p12-file signing_certificate.p12 --p12-password-file signing_certificate.password --code-signature-flags runtime Vault.app
           rm signing_certificate.p12 signing_certificate.password
 
       - name: Notarize and Staple macOS App bundle
         if: matrix.os == 'macos-latest'
         run: |
           echo "$APPSTORECONNECT_KEY_JSON" | base64 -d > appstoreconnect_key.json
-          rcodesign notary-submit --api-key-path appstoreconnect_key.json --wait --staple Vault.app
+          rcodesign notary-submit --api-key-path appstoreconnect_key.json --staple Vault.app
           spctl --verbose=4 --assess --type execute Vault.app
-          7z a Vault.app.zip Vault.app/
+          rm appstoreconnect_key.json
+          ditto -c -k --sequesterRsrc --keepParent Vault.app Vault.app.zip
 
       - name: Upload .app.zip file as Release Artefact
         if: matrix.os == 'macos-latest'
