@@ -67,7 +67,6 @@ jobs:
           target: x86_64-unknown-linux-gnu
           include: LICENCE,README.md,ultralight-sdk
           profile: app-release
-          checksum: sha256,md5
           locked: true
 
       # Generate icons for macOS and Windows
