@@ -95,7 +95,7 @@ jobs:
 
       # Generate icons for macOS and Windows
       - name: Generate Icons for Installers
-        if: matrix.os != 'macos-latest'
+        if: matrix.os != 'ubuntu-latest'
         run: |
           pip install pillow icnsutil
           python ./contrib/release/macos/icns-creator.py
