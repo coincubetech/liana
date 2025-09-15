@@ -96,7 +96,9 @@ jobs:
       # Generate icons for macOS and Windows
       - name: Generate Icons for Installers
         if: matrix.os != 'macos-latest'
-        run: python ./contrib/release/macos/icns-creator.py
+        run: |
+          pip install pillow icnsutil
+          python ./contrib/release/macos/icns-creator.py
 
       # For Windows upload an installer
       - name: Package and release .msi installer for Windows
