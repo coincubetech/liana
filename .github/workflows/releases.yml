@@ -127,7 +127,7 @@ jobs:
           P12_BASE64: ${{ secrets.CERTIFICATE_P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.CERTIFICATE_P12_PASSWORD }}
         run: |
-          echo "$P12_BASE64" | base64 - --decode > signing_certificate.p12
+          echo "$P12_BASE64" | base64 -d > signing_certificate.p12
           security create-keychain -p github actions.keychain
           security import signing_certificate.p12 -k ~/Library/Keychains/actions.keychain -P "$P12_PASSWORD" -T /usr/bin/codesign
           security set-keychain-settings ~/Library/Keychains/actions.keychain
