@@ -78,17 +78,17 @@ jobs:
           python ./contrib/release/macos/icns-creator.py
 
       # For Windows upload an installer
-      - name: Package and release .msi installer for Windows
-        if: matrix.os == 'windows-latest'
-        run: |
-          choco install wixtoolset --version=3.14.1 --yes
-          cargo wix --package liana-gui --profile app-release --output "target\wix\Coincube Vault.msi" --include ./contrib/release/wix/main.wxs --nocapture -v
-
       - name: Download ultralight-sdk
         if: matrix.os == 'windows-latest'
         run: |
           curl -L -O https://github.com/coincubetech/liana/releases/download/v0.0.1/ultralight-sdk-latest-win-x64.7z
           7z x ultralight-sdk-latest-win-x64.7z -oultralight-sdk -y
+
+      - name: Package and release .msi installer for Windows
+        if: matrix.os == 'windows-latest'
+        run: |
+          choco install wixtoolset --version=3.14.1 --yes
+          cargo wix --package liana-gui --profile app-release --output "target\wix\Coincube Vault.msi" --include ./contrib/release/wix/main.wxs --nocapture -v
 
       - name: Upload .msi to release
         if: matrix.os == 'windows-latest'
@@ -105,7 +105,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           cargo build --package liana-gui --profile app-release --target aarch64-apple-darwin
-          cp target/aarch64-apple-darwin/coincube-vault Vault
+          cp target/app-release/coincube-vault Vault
 
       - name: Download ultralight-sdk
         if: matrix.os == 'macos-latest'
@@ -117,7 +117,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           unzip ./contrib/release/macos/Vault.app.zip
-          sed -i "s/VERSION_PLACEHOLDER/${{ github.tag }}/g" ./Vault.app/Contents/Info.plist
+          sed -i "s/VERSION_PLACEHOLDER/${{ github.ref_name }}/g" ./Vault.app/Contents/Info.plist
           mv Vault ./Vault.app/Contents/MacOS/Vault
           cp -r ultralight-sdk ./Vault.app/Contents/Frameworks
           mv ./contrib/release/macos/Vault.icns ./Vault.app/Contents/Resources/Vault.icns
