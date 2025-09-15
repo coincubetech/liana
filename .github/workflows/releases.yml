@@ -45,7 +45,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-wix
+          tool: cargo-wix,rcodesign
 
       # For Linux upload binary and libraries in a compressed tarball
       - name: Install Linux dependencies
@@ -122,27 +122,23 @@ jobs:
           cp -r ultralight-sdk/bin ./Vault.app/Contents/Frameworks
           mv ./contrib/release/macos/Vault.icns ./Vault.app/Contents/Resources/Vault.icns
 
-      - name: Decode and Import macOS signing certificate
+      - name: CodeSign macOS App Bundle
         if: matrix.os == 'macos-latest'
         env:
           P12_BASE64: ${{ secrets.CERTIFICATE_P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.CERTIFICATE_P12_PASSWORD }}
+          APPSTORECONNECT_KEY_JSON: ${{ secrets.APPSTORECONNECT_KEY_JSON }}
         run: |
           echo "$P12_BASE64" | base64 -d > signing_certificate.p12
-          security create-keychain -p github actions.keychain
-          security import signing_certificate.p12 -k ~/Library/Keychains/actions.keychain -P "$P12_PASSWORD" -T /usr/bin/codesign
-          security set-keychain-settings ~/Library/Keychains/actions.keychain
-          security unlock-keychain -p github ~/Library/Keychains/actions.keychain
-          security default-keychain -s ~/Library/Keychains/actions.keychain
-          rm signing_certificate.p12
+          echo "$P12_PASSWORD" > signing_certificate.password
+          rcodesign sign --p12-file signing_certificate.p12 --p12-password-file signing_certificate.password Vault.app
+          rm signing_certificate.p12 signing_certificate.password
 
-      - name: CodeSign and Notarize .app folder bundle
+      - name: Notarize and Staple macOS App bundle
         if: matrix.os == 'macos-latest'
         run: |
-          codesign --options runtime --deep --sign "Developer ID Application: COINCUBE TECHNOLOGY LLC (8UVR249AD5)" --verbose=4 Vault.app
-          codesign --verify --deep --strict --verbose=2 Vault.app
-          xcrun notarytool submit Vault.app --apple-id "${{ secrets.APPLE_ID }}" --team-id "${{ secrets.APPLE_TEAM_ID }}" --password "${{ secrets.APPLE_APP_PASSWORD }}" --wait
-          xcrun stapler staple Vault.app
+          echo "$APPSTORECONNECT_KEY_JSON" | base64 -d > appstoreconnect_key.json
+          rcodesign notary-submit --api-key-path appstoreconnect_key.json --wait --staple Vault.app
           spctl --verbose=4 --assess --type execute Vault.app
           7z a Vault.app.zip Vault.app/
 
