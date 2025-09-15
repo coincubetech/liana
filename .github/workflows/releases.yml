@@ -103,7 +103,7 @@ jobs:
       - name: Compile Project for macOS x86 and arm64
         if: matrix.os == 'macos-latest'
         run: |
-          cargo build --package liana-gui --profile app-release --target aarch64-apple-darwin
+          cargo build --package liana-gui --profile app-release
           cp target/app-release/coincube-vault Vault
 
       - name: Download ultralight-sdk
