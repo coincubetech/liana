@@ -61,13 +61,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set development version
-        shell: bash
-        run: echo "version=dev-$(date +'%Y-%m-%d')" >> $GITHUB_ENV
-
       - uses: taiki-e/create-gh-release-action@v1
         with:
-          title: ${{ env.version }}
+          title: ${{ github.ref }}
           branch: master
 
       # Install necessary tools
