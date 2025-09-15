@@ -26,8 +26,6 @@ jobs:
             os: ubuntu-latest
           - target: win-x64
             os: windows-latest
-          - target: mac-x64
-            os: macos-latest
           - target: mac-arm64
             os: macos-latest
 
@@ -117,10 +115,8 @@ jobs:
       - name: Compile Project for macOS x86 and arm64
         if: matrix.os == 'macos-latest'
         run: |
-          rustup target add x86_64-apple-darwin
           cargo build --package liana-gui --profile app-release --target aarch64-apple-darwin
-          cargo build --package liana-gui --profile app-release --target x86_64-apple-darwin
-          lipo -create "target/aarch64-apple-darwin/coincube-vault" "target/x86_64-apple-darwin/coincube-vault" -output Vault
+          cp target/aarch64-apple-darwin/coincube-vault Vault
 
       - name: Copy Executable, Icons and Extra Metadata into .app folder
         if: matrix.os == 'macos-latest'
@@ -161,4 +157,4 @@ jobs:
           file: "Vault.app.zip"
           tag: ${{ github.ref }}
           overwrite: true
-          body: "Universal macOS App Bundle"
+          body: "macOS App Bundle (arm64)"
