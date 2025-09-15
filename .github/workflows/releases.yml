@@ -57,6 +57,7 @@ jobs:
         run: |
           curl -L -O https://github.com/coincubetech/liana/releases/download/v0.0.1/ultralight-sdk-latest-linux-x64.7z
           7z x ultralight-sdk-latest-linux-x64.7z -oultralight-sdk -y
+          mv ultralight-sdk/bin lib
 
       - uses: taiki-e/upload-rust-binary-action@v1
         if: matrix.os == 'ubuntu-latest'
@@ -65,7 +66,7 @@ jobs:
           bin: coincube-vault
           archive: coincube-vault-$tag-$target
           target: x86_64-unknown-linux-gnu
-          include: LICENCE,README.md,ultralight-sdk
+          include: LICENCE,README.md,lib
           profile: app-release
           locked: true
 
@@ -118,7 +119,7 @@ jobs:
           unzip ./contrib/release/macos/Vault.app.zip
           sed -i '' "s/VERSION_PLACEHOLDER/${{ github.ref_name }}/g" ./Vault.app/Contents/Info.plist
           mv Vault ./Vault.app/Contents/MacOS/Vault
-          cp -r ultralight-sdk ./Vault.app/Contents/Frameworks
+          cp -r ultralight-sdk/bin ./Vault.app/Contents/Frameworks
           mv ./contrib/release/macos/Vault.icns ./Vault.app/Contents/Resources/Vault.icns
 
       - name: Decode and Import macOS signing certificate
@@ -132,16 +133,13 @@ jobs:
           security import signing_certificate.p12 -k ~/Library/Keychains/actions.keychain -P "$P12_PASSWORD" -T /usr/bin/codesign
           security set-keychain-settings ~/Library/Keychains/actions.keychain
           security unlock-keychain -p github ~/Library/Keychains/actions.keychain
-          rm signing_certificate.p12
-          security list-keychains -s ~/Library/Keychains/actions.keychain
           security default-keychain -s ~/Library/Keychains/actions.keychain
-          security set-key-partition-list -S apple-tool:,apple: -s -k github ~/Library/Keychains/actions.keychain
+          rm signing_certificate.p12
 
       - name: CodeSign and Notarize .app folder bundle
         if: matrix.os == 'macos-latest'
         run: |
-          security find-identity -v -p codesigning
-          codesign --options runtime --deep --force --sign "Developer ID Application: COINCUBE TECHNOLOGY LLC (8UVR249AD5)" Vault.app
+          codesign --options runtime --deep --force --sign "Developer ID Application: COINCUBE TECHNOLOGY LLC (8UVR249AD5)" --verbose=4 Vault.app
           codesign --verify --deep --strict --verbose=2 Vault.app
           xcrun notarytool submit Vault.app --apple-id "${{ secrets.APPLE_ID }}" --team-id "${{ secrets.APPLE_TEAM_ID }}" --password "${{ secrets.APPLE_APP_PASSWORD }}" --wait
           xcrun stapler staple Vault.app
