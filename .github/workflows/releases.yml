@@ -116,7 +116,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           unzip ./contrib/release/macos/Vault.app.zip
-          sed -i "s/VERSION_PLACEHOLDER/${{ github.ref_name }}/g" ./Vault.app/Contents/Info.plist
+          sed -i '' "s/VERSION_PLACEHOLDER/${{ github.ref_name }}/g" ./Vault.app/Contents/Info.plist
           mv Vault ./Vault.app/Contents/MacOS/Vault
           cp -r ultralight-sdk ./Vault.app/Contents/Frameworks
           mv ./contrib/release/macos/Vault.icns ./Vault.app/Contents/Resources/Vault.icns
