@@ -139,6 +139,7 @@ jobs:
       - name: CodeSign and Notarize .app folder bundle
         if: matrix.os == 'macos-latest'
         run: |
+          codesign --remove-signature Vault.app
           codesign --options runtime --deep --force --sign "Developer ID Application: COINCUBE TECHNOLOGY LLC (8UVR249AD5)" --verbose=4 Vault.app
           codesign --verify --deep --strict --verbose=2 Vault.app
           xcrun notarytool submit Vault.app --apple-id "${{ secrets.APPLE_ID }}" --team-id "${{ secrets.APPLE_TEAM_ID }}" --password "${{ secrets.APPLE_APP_PASSWORD }}" --wait
