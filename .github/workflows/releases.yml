@@ -137,6 +137,8 @@ jobs:
       - name: Notarize and Staple macOS App bundle
         if: matrix.os == 'macos-latest'
         run: |
+          echo "$APPSTORECONNECT_KEY_JSON"
+          echo "$APPSTORECONNECT_KEY_JSON" | base64 -d
           echo "$APPSTORECONNECT_KEY_JSON" | base64 -d > appstoreconnect_key.json
           rcodesign notary-submit --api-key-path appstoreconnect_key.json --staple Vault.app
           spctl --verbose=4 --assess --type execute Vault.app
