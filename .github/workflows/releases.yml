@@ -98,7 +98,7 @@ jobs:
           file: "target/wix/Coincube Vault.msi"
           tag: ${{ github.ref }}
           overwrite: true
-          body: "Windows x64 Installer"
+          body: "Installers for Windows, macOS and Linux"
 
       # For macOS upload a signed and notarized dmg
       - name: Compile Project for macOS x86 and arm64
