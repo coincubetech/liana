@@ -127,7 +127,6 @@ jobs:
         env:
           P12_BASE64: ${{ secrets.CERTIFICATE_P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.CERTIFICATE_P12_PASSWORD }}
-          APPSTORECONNECT_KEY_JSON: ${{ secrets.APPSTORECONNECT_KEY_JSON }}
         run: |
           echo "$P12_BASE64" | base64 -d > signing_certificate.p12
           echo "$P12_PASSWORD" > signing_certificate.password
@@ -137,9 +136,7 @@ jobs:
       - name: Notarize and Staple macOS App bundle
         if: matrix.os == 'macos-latest'
         run: |
-          echo "$APPSTORECONNECT_KEY_JSON"
-          echo "$APPSTORECONNECT_KEY_JSON" | base64 -d
-          echo "$APPSTORECONNECT_KEY_JSON" | base64 -d > appstoreconnect_key.json
+          base64 -D <<< "${{ secrets.APPSTORECONNECT_KEY_JSON }}" > appstoreconnect_key.json
           rcodesign notary-submit --api-key-path appstoreconnect_key.json --staple Vault.app
           spctl --verbose=4 --assess --type execute Vault.app
           rm appstoreconnect_key.json
