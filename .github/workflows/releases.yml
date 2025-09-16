@@ -45,7 +45,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-wix,rcodesign
+          tool: cargo-wix,apple-codesign
 
       # For Linux upload binary and libraries in a compressed tarball
       - name: Install Linux dependencies
