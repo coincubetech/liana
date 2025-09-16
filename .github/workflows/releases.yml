@@ -1,4 +1,4 @@
-name: Dev Incremental Release
+name: Coincube Release Workflow
 
 permissions:
   contents: write
