@@ -43,6 +43,7 @@ jobs:
       # Install necessary tools
       - uses: milliewalky/setup-7-zip@v2
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-wix,apple-codesign
