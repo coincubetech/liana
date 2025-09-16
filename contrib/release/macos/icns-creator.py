@@ -6,6 +6,7 @@ from icnsutil import IcnsFile
 # Input PNG (should be at least 1024x1024)
 input_file = "liana-ui/static/logos/liana-app-icon-coincube.png"
 output_file = "contrib/release/macos/Vault.icns"
+output_ico = "contrib/release/wix/Vault.ico"
 
 print(f"Processing {input_file}")
 
@@ -36,5 +37,8 @@ for size in sizes:
 # Write to filesystem
 icns.write(output_file)
 
-# TODO: Also generate .ico files for Windows installers
 print(f"Created {output_file}")
+
+# Prepare Windows ICO
+img.save(output_ico, format="ICO", sizes=[(16,16), (32,32), (48,48), (64,64)])
+print(f"Created {output_ico}")

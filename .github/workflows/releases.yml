@@ -137,7 +137,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           base64 -D <<< "${{ secrets.APPSTORECONNECT_KEY_JSON }}" > appstoreconnect_key.json
-          rcodesign notary-submit --api-key-path appstoreconnect_key.json --staple Vault.app
+          rcodesign notary-submit --api-key-path appstoreconnect_key.json --max-wait-seconds 1800 --staple Vault.app
           spctl --verbose=4 --assess --type execute Vault.app
           rm appstoreconnect_key.json
           ditto -c -k --sequesterRsrc --keepParent Vault.app Vault.app.zip
