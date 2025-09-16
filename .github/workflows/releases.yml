@@ -104,8 +104,8 @@ jobs:
       - name: Compile Project for macOS x86 and arm64
         if: matrix.os == 'macos-latest'
         run: |
-          # cargo build --package liana-gui --profile app-release
-          # cp target/app-release/coincube-vault Vault
+          cargo build --package liana-gui --profile app-release
+          cp target/app-release/coincube-vault Vault
 
       - name: Download ultralight-sdk
         if: matrix.os == 'macos-latest'
@@ -118,7 +118,7 @@ jobs:
         run: |
           unzip ./contrib/release/macos/Vault.app.zip
           sed -i '' "s/VERSION_PLACEHOLDER/${{ github.ref_name }}/g" ./Vault.app/Contents/Info.plist
-          # mv Vault ./Vault.app/Contents/MacOS/Vault
+          mv Vault ./Vault.app/Contents/MacOS/Vault
           cp -r ultralight-sdk/bin ./Vault.app/Contents/Frameworks
           mv ./contrib/release/macos/Vault.icns ./Vault.app/Contents/Resources/Vault.icns
 
