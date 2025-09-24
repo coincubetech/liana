@@ -86,6 +86,7 @@ pub struct BuySellPanel {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NativePage {
     AccountSelect,
+    Login,
     Register,
     VerifyEmail,
 }
@@ -374,7 +375,8 @@ impl BuySellPanel {
     #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
     fn form_view<'a>(&'a self) -> Column<'a, ViewMessage> {
         match self.native_page {
-            NativePage::AccountSelect => self.native_login_form(),
+            NativePage::AccountSelect => self.native_account_select_form(),
+            NativePage::Login => self.native_login_form(),
             NativePage::Register => self.native_register_form(),
             NativePage::VerifyEmail => self.native_verify_email_form(),
         }
@@ -485,7 +487,7 @@ impl BuySellPanel {
 
 #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
 impl BuySellPanel {
-    fn native_login_form<'a>(&'a self) -> Column<'a, ViewMessage> {
+    fn native_account_select_form<'a>(&'a self) -> Column<'a, ViewMessage> {
         use liana_ui::component::card as ui_card;
         use liana_ui::component::text as ui_text;
         use liana_ui::icon::{building_icon, person_icon};
@@ -580,6 +582,71 @@ impl BuySellPanel {
             .push(business)
             .push(Space::with_height(Length::Fixed(30.0)))
             .push(button)
+            .align_x(Alignment::Center)
+            .spacing(5)
+            .max_width(500)
+            .width(Length::Fill)
+    }
+
+    fn native_login_form<'a>(&'a self) -> Column<'a, ViewMessage> {
+        use liana_ui::component::card as ui_card;
+        use liana_ui::component::text as ui_text;
+        use liana_ui::component::form;
+
+        let header = Row::new()
+            .push(
+                Row::new()
+                    .push(ui_text::h4_bold("COIN").color(color::ORANGE))
+                    .push(ui_text::h4_bold("CUBE").color(color::WHITE))
+                    .spacing(0),
+            )
+            .push(Space::with_width(Length::Fixed(8.0)))
+            .push(ui_text::h5_regular("BUY/SELL").color(color::GREY_3));
+
+        let subheader = ui_text::p1_regular("Sign in to your account").color(color::WHITE);
+
+        let email_input = form::Form::new_trimmed(
+            "Email",
+            &self.login_username,
+            |v| ViewMessage::BuySell(BuySellMessage::LoginUsernameChanged(v)),
+        )
+        .warning("Please enter your email address");
+
+        let password_input = form::Form::new_trimmed(
+            "Password",
+            &self.login_password,
+            |v| ViewMessage::BuySell(BuySellMessage::LoginPasswordChanged(v)),
+        )
+        .warning("Please enter your password")
+        .secure();
+
+        let login_button = if self.is_login_form_valid() {
+            ui_button::primary(None, "Sign In")
+                .on_press(ViewMessage::BuySell(BuySellMessage::SubmitLogin))
+                .width(Length::Fill)
+        } else {
+            ui_button::secondary(None, "Sign In").width(Length::Fill)
+        };
+
+        let create_account_link = iced::widget::button(
+            ui_text::p2_regular("Don't have an account? Sign up")
+                .color(color::ORANGE)
+        )
+        .style(theme::button::transparent)
+        .on_press(ViewMessage::BuySell(BuySellMessage::CreateAccountPressed));
+
+        Column::new()
+            .push(header)
+            .push(Space::with_height(Length::Fixed(10.0)))
+            .push(subheader)
+            .push(Space::with_height(Length::Fixed(30.0)))
+            .push(email_input)
+            .push(Space::with_height(Length::Fixed(20.0)))
+            .push(password_input)
+            .push(Space::with_height(Length::Fixed(30.0)))
+            .push(login_button)
+            .push(Space::with_height(Length::Fixed(20.0)))
+            .push(create_account_link)
             .align_x(Alignment::Center)
             .spacing(5)
             .max_width(500)

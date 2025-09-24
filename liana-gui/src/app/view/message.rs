@@ -193,6 +193,10 @@ pub enum BuySellMessage {
     ResendEmailSuccess,
     #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
     ResendEmailError(String),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    LoginSuccess(crate::services::registration::LoginResponse),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    LoginError(String),
 
     // Shared form fields (for provider-integrated builds)
     WalletAddressChanged(String),

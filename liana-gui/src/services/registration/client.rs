@@ -32,6 +32,12 @@ pub struct ResendVerificationEmailRequest {
     pub email: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LoginRequest {
+    pub email: String,
+    pub password: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: u32,
@@ -64,6 +70,13 @@ pub struct EmailVerificationStatusResponse {
 pub struct ResendEmailResponse {
     pub message: String,
     pub email: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoginResponse {
+    pub status: String,
+    pub data: User,
+    pub token: Option<String>, // JWT token for authenticated requests
 }
 
 #[derive(Debug, Clone)]
@@ -178,5 +191,21 @@ impl RegistrationClient {
 
         let resend_response: ResendEmailResponse = response.json().await?;
         Ok(resend_response)
+    }
+
+    pub async fn login(&self, email: &str, password: &str) -> Result<LoginResponse, RegistrationError> {
+        let request = LoginRequest {
+            email: email.to_string(),
+            password: password.to_string(),
+        };
+
+        let response = self
+            .post_json("login", &request)
+            .await?
+            .check_success()
+            .await?;
+
+        let login_response: LoginResponse = response.json().await?;
+        Ok(login_response)
     }
 }

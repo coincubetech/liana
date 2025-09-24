@@ -100,7 +100,15 @@ impl State for BuySellPanel {
                 return self.handle_native_login();
             }
             BuySellMessage::CreateAccountPressed => {
-                self.set_error("Create Account not implemented yet".to_string());
+                // Navigate to registration page
+                #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+                {
+                    self.native_page = NativePage::Register;
+                }
+                #[cfg(any(feature = "dev-meld", feature = "dev-onramp"))]
+                {
+                    self.set_error("Create Account not implemented yet".to_string());
+                }
             }
             BuySellMessage::WalletAddressChanged(address) => {
                 self.set_wallet_address(address);
@@ -122,8 +130,8 @@ impl State for BuySellPanel {
                 if self.selected_account_type.is_none() {
                     // button disabled; ignore
                 } else {
-                    // Navigate to registration page (native flow)
-                    self.native_page = NativePage::Register;
+                    // Navigate to login page (native flow)
+                    self.native_page = NativePage::Login;
                 }
             }
             #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
@@ -372,6 +380,28 @@ impl State for BuySellPanel {
             BuySellMessage::ResendEmailError(error) => {
                 self.error = Some(format!("Error resending email: {}", error));
             }
+            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            BuySellMessage::LoginSuccess(response) => {
+                tracing::info!("✅ [LOGIN] Login successful, checking email verification status");
+                self.error = None;
+
+                // Check if email is verified and route accordingly
+                if response.data.email_verified {
+                    tracing::info!("✅ [LOGIN] Email verified, user can proceed to dashboard");
+                    // TODO: Navigate to dashboard/profile page when implemented
+                    self.set_error("Login successful! Dashboard not yet implemented.".to_string());
+                } else {
+                    tracing::info!("⚠️ [LOGIN] Email not verified, redirecting to verification page");
+                    // Store the email for verification
+                    self.email.value = response.data.email.clone();
+                    self.native_page = NativePage::VerifyEmail;
+                }
+            }
+            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            BuySellMessage::LoginError(err) => {
+                tracing::error!("❌ [LOGIN] Login failed: {}", err);
+                self.set_error(format!("Login failed: {}", err));
+            }
 
             BuySellMessage::SourceAmountChanged(amount) => {
                 self.set_source_amount(amount);
@@ -576,12 +606,32 @@ impl State for BuySellPanel {
 
 impl BuySellPanel {
     pub fn handle_native_login(&mut self) -> Task<Message> {
-        if self.is_login_form_valid() {
-            self.error = None;
-        } else {
-            self.set_error("Please enter username and password".into());
+        if !self.is_login_form_valid() {
+            self.set_error("Please enter email and password".into());
+            return Task::none();
         }
 
-        Task::none()
+        self.error = None;
+        tracing::info!("🔍 [LOGIN] Attempting login for user: {}", self.login_username.value);
+
+        let client = self.registration_client.clone();
+        let email = self.login_username.value.clone();
+        let password = self.login_password.value.clone();
+
+        Task::perform(
+            async move {
+                match client.login(&email, &password).await {
+                    Ok(response) => {
+                        tracing::info!("✅ [LOGIN] Login successful for user: {}", email);
+                        Message::View(ViewMessage::BuySell(BuySellMessage::LoginSuccess(response)))
+                    }
+                    Err(e) => {
+                        tracing::error!("❌ [LOGIN] Login failed for user {}: {}", email, e);
+                        Message::View(ViewMessage::BuySell(BuySellMessage::LoginError(e.to_string())))
+                    }
+                }
+            },
+            |msg| msg,
+        )
     }
 }
