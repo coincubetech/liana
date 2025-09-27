@@ -385,16 +385,29 @@ impl State for BuySellPanel {
                 tracing::info!("✅ [LOGIN] Login successful, checking email verification status");
                 self.error = None;
 
-                // Check if email is verified and route accordingly
-                if response.data.email_verified {
-                    tracing::info!("✅ [LOGIN] Email verified, user can proceed to dashboard");
-                    // TODO: Navigate to dashboard/profile page when implemented
-                    self.set_error("Login successful! Dashboard not yet implemented.".to_string());
+                // Check if 2FA is required
+                if response.requires_two_factor {
+                    tracing::info!("⚠️ [LOGIN] 2FA required but not implemented yet");
+                    self.set_error("Two-factor authentication required but not yet supported.".to_string());
+                    return Task::none();
+                }
+
+                // Check if we have user data and token
+                if let (Some(user), Some(_token)) = (&response.user, &response.token) {
+                    // Check if email is verified and route accordingly
+                    if user.email_verified {
+                        tracing::info!("✅ [LOGIN] Email verified, user can proceed to dashboard");
+                        // TODO: Navigate to dashboard/profile page when implemented
+                        self.set_error("Login successful! Dashboard not yet implemented.".to_string());
+                    } else {
+                        tracing::info!("⚠️ [LOGIN] Email not verified, redirecting to verification page");
+                        // Store the email for verification
+                        self.email.value = user.email.clone();
+                        self.native_page = NativePage::VerifyEmail;
+                    }
                 } else {
-                    tracing::info!("⚠️ [LOGIN] Email not verified, redirecting to verification page");
-                    // Store the email for verification
-                    self.email.value = response.data.email.clone();
-                    self.native_page = NativePage::VerifyEmail;
+                    tracing::error!("❌ [LOGIN] Login response missing user data or token");
+                    self.set_error("Login failed: Invalid response from server".to_string());
                 }
             }
             #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
