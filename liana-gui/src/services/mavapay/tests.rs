@@ -1,12 +1,12 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::mavapay::{Currency, MavapayClient, QuoteRequest, PaymentMethod};
+    use crate::services::mavapay::{Currency, MavapayClient, PaymentMethod, QuoteRequest};
 
     #[tokio::test]
     async fn test_mavapay_client_creation() {
         let client = MavapayClient::new("test_api_key".to_string());
-        
+
         // Verify client is created with correct base URL for debug builds
         assert!(client.base_url.contains("staging.api.mavapay.co"));
     }
@@ -14,11 +14,11 @@ mod tests {
     #[test]
     fn test_currency_serialization() {
         use serde_json;
-        
+
         let btc = Currency::BtcSat;
         let serialized = serde_json::to_string(&btc).unwrap();
         assert_eq!(serialized, "\"BTCSAT\"");
-        
+
         let ngn = Currency::NgnKobo;
         let serialized = serde_json::to_string(&ngn).unwrap();
         assert_eq!(serialized, "\"NGNKOBO\"");
@@ -32,7 +32,7 @@ mod tests {
             target_currency: Currency::NgnKobo,
             payment_method: PaymentMethod::Lightning,
         };
-        
+
         assert_eq!(request.amount, 100000);
         assert_eq!(request.source_currency, Currency::BtcSat);
         assert_eq!(request.target_currency, Currency::NgnKobo);
@@ -56,8 +56,8 @@ mod tests {
 
     #[test]
     fn test_price_parsing_actual_api_response() {
-        use serde_json::json;
         use crate::services::mavapay::api::PriceResponse;
+        use serde_json::json;
 
         // Test the actual API response format from the error message
         let api_response = json!({
@@ -75,9 +75,16 @@ mod tests {
         });
 
         // Simulate the parsing logic from get_price method
-        let price = if let Some(btc_price) = api_response.get("btcPriceInUnitCurrency").and_then(|p| p.as_str()) {
+        let price = if let Some(btc_price) = api_response
+            .get("btcPriceInUnitCurrency")
+            .and_then(|p| p.as_str())
+        {
             btc_price.parse::<f64>().unwrap()
-        } else if let Some(unit_price) = api_response.get("unitPricePerSat").and_then(|p| p.get("amount")).and_then(|a| a.as_str()) {
+        } else if let Some(unit_price) = api_response
+            .get("unitPricePerSat")
+            .and_then(|p| p.get("amount"))
+            .and_then(|a| a.as_str())
+        {
             unit_price.parse::<f64>().unwrap()
         } else {
             panic!("Should be able to parse price from actual API response");
@@ -88,11 +95,21 @@ mod tests {
 
         // Test alternative parsing path (unitPricePerSat)
         let mut alt_response = api_response.clone();
-        alt_response.as_object_mut().unwrap().remove("btcPriceInUnitCurrency");
+        alt_response
+            .as_object_mut()
+            .unwrap()
+            .remove("btcPriceInUnitCurrency");
 
-        let alt_price = if let Some(btc_price) = alt_response.get("btcPriceInUnitCurrency").and_then(|p| p.as_str()) {
+        let alt_price = if let Some(btc_price) = alt_response
+            .get("btcPriceInUnitCurrency")
+            .and_then(|p| p.as_str())
+        {
             btc_price.parse::<f64>().unwrap()
-        } else if let Some(unit_price) = alt_response.get("unitPricePerSat").and_then(|p| p.get("amount")).and_then(|a| a.as_str()) {
+        } else if let Some(unit_price) = alt_response
+            .get("unitPricePerSat")
+            .and_then(|p| p.get("amount"))
+            .and_then(|a| a.as_str())
+        {
             unit_price.parse::<f64>().unwrap()
         } else {
             panic!("Should be able to parse price from unitPricePerSat");
@@ -111,9 +128,16 @@ mod tests {
             "currency": "USD"
         });
 
-        let price = if let Some(btc_price) = legacy_response.get("btcPriceInUnitCurrency").and_then(|p| p.as_str()) {
+        let price = if let Some(btc_price) = legacy_response
+            .get("btcPriceInUnitCurrency")
+            .and_then(|p| p.as_str())
+        {
             btc_price.parse::<f64>().unwrap()
-        } else if let Some(unit_price) = legacy_response.get("unitPricePerSat").and_then(|p| p.get("amount")).and_then(|a| a.as_str()) {
+        } else if let Some(unit_price) = legacy_response
+            .get("unitPricePerSat")
+            .and_then(|p| p.get("amount"))
+            .and_then(|a| a.as_str())
+        {
             unit_price.parse::<f64>().unwrap()
         } else if let Some(p) = legacy_response.get("price").and_then(|p| p.as_f64()) {
             p
@@ -131,7 +155,10 @@ mod tests {
             }
         });
 
-        let nested_price = if let Some(btc_price) = nested_response.get("btcPriceInUnitCurrency").and_then(|p| p.as_str()) {
+        let nested_price = if let Some(btc_price) = nested_response
+            .get("btcPriceInUnitCurrency")
+            .and_then(|p| p.as_str())
+        {
             btc_price.parse::<f64>().unwrap()
         } else if let Some(data) = nested_response.get("data") {
             if let Some(btc_price) = data.get("btcPriceInUnitCurrency").and_then(|p| p.as_str()) {

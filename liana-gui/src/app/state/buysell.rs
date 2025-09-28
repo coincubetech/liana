@@ -2,7 +2,7 @@ use iced::Task;
 use std::sync::Arc;
 
 #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-use crate::services::mavapay::{Beneficiary, BankAccount};
+use crate::services::mavapay::{BankAccount, Beneficiary};
 
 #[cfg(feature = "webview")]
 use iced_webview::{
@@ -110,7 +110,7 @@ impl State for BuySellPanel {
                 }
                 #[cfg(any(feature = "dev-meld", feature = "dev-onramp"))]
                 {
-                self.set_error("Create Account not implemented yet".to_string());
+                    self.set_error("Create Account not implemented yet".to_string());
                 }
             }
             BuySellMessage::WalletAddressChanged(address) => {
@@ -328,11 +328,15 @@ impl State for BuySellPanel {
             BuySellMessage::EmailVerificationStatusChecked(verified) => {
                 self.email_verification_status = Some(verified);
                 if verified {
-                    tracing::info!("✅ [EMAIL_VERIFICATION] Email verified, navigating to Mavapay dashboard");
+                    tracing::info!(
+                        "✅ [EMAIL_VERIFICATION] Email verified, navigating to Mavapay dashboard"
+                    );
                     self.native_page = NativePage::CoincubePay;
                     self.error = None;
                     // Automatically get current price when entering dashboard
-                    return Task::done(Message::View(ViewMessage::BuySell(BuySellMessage::MavapayGetPrice)));
+                    return Task::done(Message::View(ViewMessage::BuySell(
+                        BuySellMessage::MavapayGetPrice,
+                    )));
                 } else {
                     self.error = None;
                 }
@@ -395,7 +399,9 @@ impl State for BuySellPanel {
                 // Check if 2FA is required
                 if response.requires_two_factor {
                     tracing::info!("⚠️ [LOGIN] 2FA required but not implemented yet");
-                    self.set_error("Two-factor authentication required but not yet supported.".to_string());
+                    self.set_error(
+                        "Two-factor authentication required but not yet supported.".to_string(),
+                    );
                     return Task::none();
                 }
 
@@ -403,12 +409,18 @@ impl State for BuySellPanel {
                 if let (Some(user), Some(_token)) = (&response.user, &response.token) {
                     // Check if email is verified and route accordingly
                     if user.email_verified {
-                        tracing::info!("✅ [LOGIN] Email verified, navigating to Mavapay dashboard");
+                        tracing::info!(
+                            "✅ [LOGIN] Email verified, navigating to Mavapay dashboard"
+                        );
                         self.native_page = NativePage::CoincubePay;
                         // Automatically get current price when entering dashboard
-                        return Task::done(Message::View(ViewMessage::BuySell(BuySellMessage::MavapayGetPrice)));
+                        return Task::done(Message::View(ViewMessage::BuySell(
+                            BuySellMessage::MavapayGetPrice,
+                        )));
                     } else {
-                        tracing::info!("⚠️ [LOGIN] Email not verified, redirecting to verification page");
+                        tracing::info!(
+                            "⚠️ [LOGIN] Email not verified, redirecting to verification page"
+                        );
                         // Store the email for verification
                         self.email.value = user.email.clone();
                         self.native_page = NativePage::VerifyEmail;
@@ -452,12 +464,14 @@ impl State for BuySellPanel {
             #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayBankAccountNumberChanged(account) => {
                 self.mavapay_bank_account_number.value = account;
-                self.mavapay_bank_account_number.valid = !self.mavapay_bank_account_number.value.is_empty();
+                self.mavapay_bank_account_number.valid =
+                    !self.mavapay_bank_account_number.value.is_empty();
             }
             #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayBankAccountNameChanged(name) => {
                 self.mavapay_bank_account_name.value = name;
-                self.mavapay_bank_account_name.valid = !self.mavapay_bank_account_name.value.is_empty();
+                self.mavapay_bank_account_name.valid =
+                    !self.mavapay_bank_account_name.value.is_empty();
             }
             #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayBankCodeChanged(code) => {
@@ -522,8 +536,15 @@ impl State for BuySellPanel {
                 self.mavapay_payment_status = Some(status);
                 self.error = None;
                 // Start polling for status updates
-                let quote_id = self.mavapay_payment_status.as_ref().unwrap().quote_id.clone();
-                return Task::done(Message::View(ViewMessage::BuySell(BuySellMessage::MavapayStartPolling(quote_id))));
+                let quote_id = self
+                    .mavapay_payment_status
+                    .as_ref()
+                    .unwrap()
+                    .quote_id
+                    .clone();
+                return Task::done(Message::View(ViewMessage::BuySell(
+                    BuySellMessage::MavapayStartPolling(quote_id),
+                )));
             }
             #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayPaymentConfirmationError(error) => {
@@ -755,8 +776,11 @@ impl BuySellPanel {
             return Task::none();
         }
 
-            self.error = None;
-        tracing::info!("🔍 [LOGIN] Attempting login for user: {}", self.login_username.value);
+        self.error = None;
+        tracing::info!(
+            "🔍 [LOGIN] Attempting login for user: {}",
+            self.login_username.value
+        );
 
         let client = self.registration_client.clone();
         let email = self.login_username.value.clone();
@@ -771,7 +795,9 @@ impl BuySellPanel {
                     }
                     Err(e) => {
                         tracing::error!("❌ [LOGIN] Login failed for user {}: {}", email, e);
-                        Message::View(ViewMessage::BuySell(BuySellMessage::LoginError(e.to_string())))
+                        Message::View(ViewMessage::BuySell(BuySellMessage::LoginError(
+                            e.to_string(),
+                        )))
                     }
                 }
             },
@@ -781,30 +807,30 @@ impl BuySellPanel {
 
     #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
     fn handle_mavapay_create_quote(&self) -> Task<Message> {
-        use crate::services::mavapay::{QuoteRequest, Currency, PaymentMethod};
+        use crate::services::mavapay::{Currency, PaymentMethod, QuoteRequest};
 
         // Validate required bank account fields
         if self.mavapay_bank_account_number.value.is_empty() {
             return Task::done(Message::View(ViewMessage::BuySell(
-                BuySellMessage::MavapayQuoteError("Bank account number is required".to_string())
+                BuySellMessage::MavapayQuoteError("Bank account number is required".to_string()),
             )));
         }
 
         if self.mavapay_bank_account_name.value.is_empty() {
             return Task::done(Message::View(ViewMessage::BuySell(
-                BuySellMessage::MavapayQuoteError("Bank account name is required".to_string())
+                BuySellMessage::MavapayQuoteError("Bank account name is required".to_string()),
             )));
         }
 
         if self.mavapay_bank_code.value.is_empty() {
             return Task::done(Message::View(ViewMessage::BuySell(
-                BuySellMessage::MavapayQuoteError("Bank code is required".to_string())
+                BuySellMessage::MavapayQuoteError("Bank code is required".to_string()),
             )));
         }
 
         if self.mavapay_bank_name.value.is_empty() {
             return Task::done(Message::View(ViewMessage::BuySell(
-                BuySellMessage::MavapayQuoteError("Bank name is required".to_string())
+                BuySellMessage::MavapayQuoteError("Bank name is required".to_string()),
             )));
         }
 
@@ -812,7 +838,7 @@ impl BuySellPanel {
             Ok(amt) => amt,
             Err(_) => {
                 return Task::done(Message::View(ViewMessage::BuySell(
-                    BuySellMessage::MavapayQuoteError("Invalid amount".to_string())
+                    BuySellMessage::MavapayQuoteError("Invalid amount".to_string()),
                 )));
             }
         };
@@ -824,7 +850,7 @@ impl BuySellPanel {
             "KESCENT" => Currency::KenyanShillingCent,
             _ => {
                 return Task::done(Message::View(ViewMessage::BuySell(
-                    BuySellMessage::MavapayQuoteError("Invalid source currency".to_string())
+                    BuySellMessage::MavapayQuoteError("Invalid source currency".to_string()),
                 )));
             }
         };
@@ -836,7 +862,7 @@ impl BuySellPanel {
             "KESCENT" => Currency::KenyanShillingCent,
             _ => {
                 return Task::done(Message::View(ViewMessage::BuySell(
-                    BuySellMessage::MavapayQuoteError("Invalid target currency".to_string())
+                    BuySellMessage::MavapayQuoteError("Invalid target currency".to_string()),
                 )));
             }
         };
@@ -859,13 +885,15 @@ impl BuySellPanel {
 
         let client = self.mavapay_client.clone();
         Task::perform(
-            async move {
-                client.create_quote(request).await
-            },
+            async move { client.create_quote(request).await },
             |result| match result {
-                Ok(quote) => Message::View(ViewMessage::BuySell(BuySellMessage::MavapayQuoteCreated(quote))),
-                Err(error) => Message::View(ViewMessage::BuySell(BuySellMessage::MavapayQuoteError(error.to_string()))),
-            }
+                Ok(quote) => Message::View(ViewMessage::BuySell(
+                    BuySellMessage::MavapayQuoteCreated(quote),
+                )),
+                Err(error) => Message::View(ViewMessage::BuySell(
+                    BuySellMessage::MavapayQuoteError(error.to_string()),
+                )),
+            },
         )
     }
 
@@ -877,9 +905,13 @@ impl BuySellPanel {
                 client.get_price("NGN").await // Default to Nigerian Naira
             },
             |result| match result {
-                Ok(price) => Message::View(ViewMessage::BuySell(BuySellMessage::MavapayPriceReceived(price))),
-                Err(error) => Message::View(ViewMessage::BuySell(BuySellMessage::MavapayPriceError(error.to_string()))),
-            }
+                Ok(price) => Message::View(ViewMessage::BuySell(
+                    BuySellMessage::MavapayPriceReceived(price),
+                )),
+                Err(error) => Message::View(ViewMessage::BuySell(
+                    BuySellMessage::MavapayPriceError(error.to_string()),
+                )),
+            },
         )
     }
 
@@ -891,9 +923,13 @@ impl BuySellPanel {
                 client.get_transactions(Some(1), Some(10), None).await // Get first 10 transactions
             },
             |result| match result {
-                Ok(transactions) => Message::View(ViewMessage::BuySell(BuySellMessage::MavapayTransactionsReceived(transactions))),
-                Err(error) => Message::View(ViewMessage::BuySell(BuySellMessage::MavapayTransactionsError(error.to_string()))),
-            }
+                Ok(transactions) => Message::View(ViewMessage::BuySell(
+                    BuySellMessage::MavapayTransactionsReceived(transactions),
+                )),
+                Err(error) => Message::View(ViewMessage::BuySell(
+                    BuySellMessage::MavapayTransactionsError(error.to_string()),
+                )),
+            },
         )
     }
 
@@ -901,13 +937,15 @@ impl BuySellPanel {
     fn handle_mavapay_confirm_payment(&self, quote_id: String) -> Task<Message> {
         let client = self.mavapay_client.clone();
         Task::perform(
-            async move {
-                client.confirm_quote(quote_id).await
-            },
+            async move { client.confirm_quote(quote_id).await },
             |result| match result {
-                Ok(status) => Message::View(ViewMessage::BuySell(BuySellMessage::MavapayPaymentConfirmed(status))),
-                Err(error) => Message::View(ViewMessage::BuySell(BuySellMessage::MavapayPaymentConfirmationError(error.to_string()))),
-            }
+                Ok(status) => Message::View(ViewMessage::BuySell(
+                    BuySellMessage::MavapayPaymentConfirmed(status),
+                )),
+                Err(error) => Message::View(ViewMessage::BuySell(
+                    BuySellMessage::MavapayPaymentConfirmationError(error.to_string()),
+                )),
+            },
         )
     }
 
@@ -915,13 +953,15 @@ impl BuySellPanel {
     fn handle_mavapay_check_payment_status(&self, quote_id: String) -> Task<Message> {
         let client = self.mavapay_client.clone();
         Task::perform(
-            async move {
-                client.get_payment_status(&quote_id).await
-            },
+            async move { client.get_payment_status(&quote_id).await },
             |result| match result {
-                Ok(status) => Message::View(ViewMessage::BuySell(BuySellMessage::MavapayPaymentStatusUpdated(status))),
-                Err(error) => Message::View(ViewMessage::BuySell(BuySellMessage::MavapayPaymentStatusError(error.to_string()))),
-            }
+                Ok(status) => Message::View(ViewMessage::BuySell(
+                    BuySellMessage::MavapayPaymentStatusUpdated(status),
+                )),
+                Err(error) => Message::View(ViewMessage::BuySell(
+                    BuySellMessage::MavapayPaymentStatusError(error.to_string()),
+                )),
+            },
         )
     }
 
@@ -934,9 +974,13 @@ impl BuySellPanel {
                 client.poll_transaction_status(&quote_id, 20, 5).await
             },
             |result| match result {
-                Ok(status) => Message::View(ViewMessage::BuySell(BuySellMessage::MavapayPaymentStatusUpdated(status))),
-                Err(error) => Message::View(ViewMessage::BuySell(BuySellMessage::MavapayPaymentStatusError(error.to_string()))),
-            }
+                Ok(status) => Message::View(ViewMessage::BuySell(
+                    BuySellMessage::MavapayPaymentStatusUpdated(status),
+                )),
+                Err(error) => Message::View(ViewMessage::BuySell(
+                    BuySellMessage::MavapayPaymentStatusError(error.to_string()),
+                )),
+            },
         )
     }
 }

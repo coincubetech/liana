@@ -195,7 +195,11 @@ impl RegistrationClient {
         Ok(resend_response)
     }
 
-    pub async fn login(&self, email: &str, password: &str) -> Result<LoginResponse, RegistrationError> {
+    pub async fn login(
+        &self,
+        email: &str,
+        password: &str,
+    ) -> Result<LoginResponse, RegistrationError> {
         let request = LoginRequest {
             provider: 1, // EmailProvider = 1
             email: email.to_string(),

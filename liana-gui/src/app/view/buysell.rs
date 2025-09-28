@@ -667,8 +667,8 @@ impl BuySellPanel {
 
     fn native_login_form<'a>(&'a self) -> Column<'a, ViewMessage> {
         use liana_ui::component::card as ui_card;
-        use liana_ui::component::text as ui_text;
         use liana_ui::component::form;
+        use liana_ui::component::text as ui_text;
 
         let header = Row::new()
             .push(
@@ -682,18 +682,14 @@ impl BuySellPanel {
 
         let subheader = ui_text::p1_regular("Sign in to your account").color(color::WHITE);
 
-        let email_input = form::Form::new_trimmed(
-            "Email",
-            &self.login_username,
-            |v| ViewMessage::BuySell(BuySellMessage::LoginUsernameChanged(v)),
-        )
+        let email_input = form::Form::new_trimmed("Email", &self.login_username, |v| {
+            ViewMessage::BuySell(BuySellMessage::LoginUsernameChanged(v))
+        })
         .warning("Please enter your email address");
 
-        let password_input = form::Form::new_trimmed(
-            "Password",
-            &self.login_password,
-            |v| ViewMessage::BuySell(BuySellMessage::LoginPasswordChanged(v)),
-        )
+        let password_input = form::Form::new_trimmed("Password", &self.login_password, |v| {
+            ViewMessage::BuySell(BuySellMessage::LoginPasswordChanged(v))
+        })
         .warning("Please enter your password")
         .secure();
 
@@ -706,8 +702,7 @@ impl BuySellPanel {
         };
 
         let create_account_link = iced::widget::button(
-            ui_text::p2_regular("Don't have an account? Sign up")
-                .color(color::ORANGE)
+            ui_text::p2_regular("Don't have an account? Sign up").color(color::ORANGE),
         )
         .style(theme::button::transparent)
         .on_press(ViewMessage::BuySell(BuySellMessage::CreateAccountPressed));
@@ -1127,26 +1122,34 @@ impl BuySellPanel {
 
         // Error display
         if let Some(error) = &self.error {
-            column = column.push(
-                Container::new(text(error).size(14).color(color::RED))
-                    .padding(10)
-                    .style(theme::card::invalid)
-            ).push(Space::with_height(Length::Fixed(10.0)));
+            column = column
+                .push(
+                    Container::new(text(error).size(14).color(color::RED))
+                        .padding(10)
+                        .style(theme::card::invalid),
+                )
+                .push(Space::with_height(Length::Fixed(10.0)));
         }
 
         // Current price display
         if let Some(price) = &self.mavapay_current_price {
-            column = column.push(
-                Container::new(
-                    Row::new()
-                        .push(bitcoin_icon().size(20).color(color::ORANGE))
-                        .push(Space::with_width(Length::Fixed(10.0)))
-                        .push(text(format!("1 BTC = {:.2} {}", price.price, price.currency)).size(16).color(color::WHITE))
-                        .align_y(Alignment::Center)
+            column = column
+                .push(
+                    Container::new(
+                        Row::new()
+                            .push(bitcoin_icon().size(20).color(color::ORANGE))
+                            .push(Space::with_width(Length::Fixed(10.0)))
+                            .push(
+                                text(format!("1 BTC = {:.2} {}", price.price, price.currency))
+                                    .size(16)
+                                    .color(color::WHITE),
+                            )
+                            .align_y(Alignment::Center),
+                    )
+                    .padding(15)
+                    .style(theme::card::simple),
                 )
-                .padding(15)
-                .style(theme::card::simple)
-            ).push(Space::with_height(Length::Fixed(15.0)));
+                .push(Space::with_height(Length::Fixed(15.0)));
         }
 
         // Quick actions
@@ -1154,13 +1157,13 @@ impl BuySellPanel {
             .push(
                 ui_button::primary(None, "Get Price")
                     .on_press(ViewMessage::BuySell(BuySellMessage::MavapayGetPrice))
-                    .width(Length::Fixed(120.0))
+                    .width(Length::Fixed(120.0)),
             )
             .push(Space::with_width(Length::Fixed(10.0)))
             .push(
                 ui_button::secondary(None, "View Transactions")
                     .on_press(ViewMessage::BuySell(BuySellMessage::MavapayGetTransactions))
-                    .width(Length::Fixed(150.0))
+                    .width(Length::Fixed(150.0)),
             )
             .spacing(10);
 
@@ -1176,7 +1179,7 @@ impl BuySellPanel {
                         .push(text("💱").size(20))
                         .push(Space::with_width(Length::Fixed(10.0)))
                         .push(ui_text::h5_medium("Create Exchange Quote").color(color::WHITE))
-                        .align_y(Alignment::Center)
+                        .align_y(Alignment::Center),
                 )
                 .push(Space::with_height(Length::Fixed(15.0)))
                 .push(
@@ -1186,13 +1189,19 @@ impl BuySellPanel {
                                 .push(text("Amount").size(14).color(color::GREY_3))
                                 .push(Space::with_height(Length::Fixed(5.0)))
                                 .push(
-                                    form::Form::new_trimmed("100000", &self.mavapay_amount, |value| {
-                                        ViewMessage::BuySell(BuySellMessage::MavapayAmountChanged(value))
-                                    })
+                                    form::Form::new_trimmed(
+                                        "100000",
+                                        &self.mavapay_amount,
+                                        |value| {
+                                            ViewMessage::BuySell(
+                                                BuySellMessage::MavapayAmountChanged(value),
+                                            )
+                                        },
+                                    )
                                     .size(14)
-                                    .padding(10)
+                                    .padding(10),
                                 )
-                                .width(Length::Fixed(120.0))
+                                .width(Length::Fixed(120.0)),
                         )
                         .push(Space::with_width(Length::Fixed(10.0)))
                         .push(
@@ -1200,13 +1209,19 @@ impl BuySellPanel {
                                 .push(text("From").size(14).color(color::GREY_3))
                                 .push(Space::with_height(Length::Fixed(5.0)))
                                 .push(
-                                    form::Form::new_trimmed("BTCSAT", &self.mavapay_source_currency, |value| {
-                                        ViewMessage::BuySell(BuySellMessage::MavapaySourceCurrencyChanged(value))
-                                    })
+                                    form::Form::new_trimmed(
+                                        "BTCSAT",
+                                        &self.mavapay_source_currency,
+                                        |value| {
+                                            ViewMessage::BuySell(
+                                                BuySellMessage::MavapaySourceCurrencyChanged(value),
+                                            )
+                                        },
+                                    )
                                     .size(14)
-                                    .padding(10)
+                                    .padding(10),
                                 )
-                                .width(Length::Fixed(100.0))
+                                .width(Length::Fixed(100.0)),
                         )
                         .push(Space::with_width(Length::Fixed(10.0)))
                         .push(
@@ -1214,15 +1229,21 @@ impl BuySellPanel {
                                 .push(text("To").size(14).color(color::GREY_3))
                                 .push(Space::with_height(Length::Fixed(5.0)))
                                 .push(
-                                    form::Form::new_trimmed("NGNKOBO", &self.mavapay_target_currency, |value| {
-                                        ViewMessage::BuySell(BuySellMessage::MavapayTargetCurrencyChanged(value))
-                                    })
+                                    form::Form::new_trimmed(
+                                        "NGNKOBO",
+                                        &self.mavapay_target_currency,
+                                        |value| {
+                                            ViewMessage::BuySell(
+                                                BuySellMessage::MavapayTargetCurrencyChanged(value),
+                                            )
+                                        },
+                                    )
                                     .size(14)
-                                    .padding(10)
+                                    .padding(10),
                                 )
-                                .width(Length::Fixed(100.0))
+                                .width(Length::Fixed(100.0)),
                         )
-                        .spacing(10)
+                        .spacing(10),
                 )
                 .push(Space::with_height(Length::Fixed(15.0)))
                 // Bank Account Details Section
@@ -1235,13 +1256,21 @@ impl BuySellPanel {
                                 .push(text("Account Number").size(14).color(color::GREY_3))
                                 .push(Space::with_height(Length::Fixed(5.0)))
                                 .push(
-                                    form::Form::new_trimmed("1234567890", &self.mavapay_bank_account_number, |value| {
-                                        ViewMessage::BuySell(BuySellMessage::MavapayBankAccountNumberChanged(value))
-                                    })
+                                    form::Form::new_trimmed(
+                                        "1234567890",
+                                        &self.mavapay_bank_account_number,
+                                        |value| {
+                                            ViewMessage::BuySell(
+                                                BuySellMessage::MavapayBankAccountNumberChanged(
+                                                    value,
+                                                ),
+                                            )
+                                        },
+                                    )
                                     .size(14)
-                                    .padding(10)
+                                    .padding(10),
                                 )
-                                .width(Length::Fixed(150.0))
+                                .width(Length::Fixed(150.0)),
                         )
                         .push(Space::with_width(Length::Fixed(10.0)))
                         .push(
@@ -1249,15 +1278,23 @@ impl BuySellPanel {
                                 .push(text("Account Name").size(14).color(color::GREY_3))
                                 .push(Space::with_height(Length::Fixed(5.0)))
                                 .push(
-                                    form::Form::new_trimmed("John Doe", &self.mavapay_bank_account_name, |value| {
-                                        ViewMessage::BuySell(BuySellMessage::MavapayBankAccountNameChanged(value))
-                                    })
+                                    form::Form::new_trimmed(
+                                        "John Doe",
+                                        &self.mavapay_bank_account_name,
+                                        |value| {
+                                            ViewMessage::BuySell(
+                                                BuySellMessage::MavapayBankAccountNameChanged(
+                                                    value,
+                                                ),
+                                            )
+                                        },
+                                    )
                                     .size(14)
-                                    .padding(10)
+                                    .padding(10),
                                 )
-                                .width(Length::Fixed(150.0))
+                                .width(Length::Fixed(150.0)),
                         )
-                        .spacing(10)
+                        .spacing(10),
                 )
                 .push(Space::with_height(Length::Fixed(10.0)))
                 .push(
@@ -1267,13 +1304,19 @@ impl BuySellPanel {
                                 .push(text("Bank Code").size(14).color(color::GREY_3))
                                 .push(Space::with_height(Length::Fixed(5.0)))
                                 .push(
-                                    form::Form::new_trimmed("011", &self.mavapay_bank_code, |value| {
-                                        ViewMessage::BuySell(BuySellMessage::MavapayBankCodeChanged(value))
-                                    })
+                                    form::Form::new_trimmed(
+                                        "011",
+                                        &self.mavapay_bank_code,
+                                        |value| {
+                                            ViewMessage::BuySell(
+                                                BuySellMessage::MavapayBankCodeChanged(value),
+                                            )
+                                        },
+                                    )
                                     .size(14)
-                                    .padding(10)
+                                    .padding(10),
                                 )
-                                .width(Length::Fixed(100.0))
+                                .width(Length::Fixed(100.0)),
                         )
                         .push(Space::with_width(Length::Fixed(10.0)))
                         .push(
@@ -1281,23 +1324,29 @@ impl BuySellPanel {
                                 .push(text("Bank Name").size(14).color(color::GREY_3))
                                 .push(Space::with_height(Length::Fixed(5.0)))
                                 .push(
-                                    form::Form::new_trimmed("First Bank", &self.mavapay_bank_name, |value| {
-                                        ViewMessage::BuySell(BuySellMessage::MavapayBankNameChanged(value))
-                                    })
+                                    form::Form::new_trimmed(
+                                        "First Bank",
+                                        &self.mavapay_bank_name,
+                                        |value| {
+                                            ViewMessage::BuySell(
+                                                BuySellMessage::MavapayBankNameChanged(value),
+                                            )
+                                        },
+                                    )
                                     .size(14)
-                                    .padding(10)
+                                    .padding(10),
                                 )
-                                .width(Length::Fixed(200.0))
+                                .width(Length::Fixed(200.0)),
                         )
-                        .spacing(10)
+                        .spacing(10),
                 )
                 .push(Space::with_height(Length::Fixed(15.0)))
                 .push(
                     ui_button::primary(None, "Create Quote")
                         .on_press(ViewMessage::BuySell(BuySellMessage::MavapayCreateQuote))
-                        .width(Length::Fill)
+                        .width(Length::Fill),
                 )
-                .spacing(5)
+                .spacing(5),
         )
         .padding(20)
         .style(theme::card::simple);
@@ -1312,17 +1361,25 @@ impl BuySellPanel {
                 .push(
                     Row::new()
                         .push(text("Amount: ").size(14).color(color::GREY_3))
-                        .push(text(format!("{} sats", quote.total_amount_in_source_currency)).size(14).color(color::WHITE))
+                        .push(
+                            text(format!("{} sats", quote.total_amount_in_source_currency))
+                                .size(14)
+                                .color(color::WHITE),
+                        ),
                 )
                 .push(
                     Row::new()
                         .push(text("Rate: ").size(14).color(color::GREY_3))
-                        .push(text(format!("{:.2}", quote.exchange_rate)).size(14).color(color::WHITE))
+                        .push(
+                            text(format!("{:.2}", quote.exchange_rate))
+                                .size(14)
+                                .color(color::WHITE),
+                        ),
                 )
                 .push(
                     Row::new()
                         .push(text("Expires: ").size(14).color(color::GREY_3))
-                        .push(text(&quote.expiry).size(14).color(color::ORANGE))
+                        .push(text(&quote.expiry).size(14).color(color::ORANGE)),
                 );
 
             // Show payment details if available
@@ -1331,13 +1388,9 @@ impl BuySellPanel {
                     .push(Space::with_height(Length::Fixed(10.0)))
                     .push(text("Lightning Invoice:").size(14).color(color::GREY_3))
                     .push(
-                        Container::new(
-                            text(payment_details)
-                                .size(12)
-                                .color(color::WHITE)
-                        )
-                        .padding(10)
-                        .style(theme::card::simple)
+                        Container::new(text(payment_details).size(12).color(color::WHITE))
+                            .padding(10)
+                            .style(theme::card::simple),
                     );
             }
 
@@ -1345,8 +1398,10 @@ impl BuySellPanel {
                 .push(Space::with_height(Length::Fixed(15.0)))
                 .push(
                     ui_button::primary(None, "Confirm Payment")
-                        .on_press(ViewMessage::BuySell(BuySellMessage::MavapayConfirmPayment(quote.id.clone())))
-                        .width(Length::Fill)
+                        .on_press(ViewMessage::BuySell(BuySellMessage::MavapayConfirmPayment(
+                            quote.id.clone(),
+                        )))
+                        .width(Length::Fill),
                 );
 
             let quote_display = Container::new(quote_column.spacing(5))
@@ -1373,18 +1428,25 @@ impl BuySellPanel {
                         .push(text("💳").size(20))
                         .push(Space::with_width(Length::Fixed(10.0)))
                         .push(ui_text::h5_medium("Payment Status").color(color::WHITE))
-                        .align_y(Alignment::Center)
+                        .align_y(Alignment::Center),
                 )
                 .push(Space::with_height(Length::Fixed(10.0)))
                 .push(
                     Row::new()
                         .push(text("Status: ").size(14).color(color::GREY_3))
-                        .push(text(&payment_status.status).size(14).color(status_color))
+                        .push(text(&payment_status.status).size(14).color(status_color)),
                 )
                 .push(
                     Row::new()
                         .push(text("Amount: ").size(14).color(color::GREY_3))
-                        .push(text(format!("{} {}", payment_status.amount, payment_status.currency)).size(14).color(color::WHITE))
+                        .push(
+                            text(format!(
+                                "{} {}",
+                                payment_status.amount, payment_status.currency
+                            ))
+                            .size(14)
+                            .color(color::WHITE),
+                        ),
                 );
 
             if self.mavapay_polling_active {
@@ -1395,21 +1457,25 @@ impl BuySellPanel {
                             .push(text("🔄").size(16))
                             .push(Space::with_width(Length::Fixed(5.0)))
                             .push(text("Monitoring payment...").size(14).color(color::ORANGE))
-                            .align_y(Alignment::Center)
+                            .align_y(Alignment::Center),
                     )
                     .push(Space::with_height(Length::Fixed(10.0)))
                     .push(
                         ui_button::secondary(None, "Stop Monitoring")
                             .on_press(ViewMessage::BuySell(BuySellMessage::MavapayStopPolling))
-                            .width(Length::Fill)
+                            .width(Length::Fill),
                     );
             } else if payment_status.status == "PENDING" {
                 status_column = status_column
                     .push(Space::with_height(Length::Fixed(10.0)))
                     .push(
                         ui_button::primary(None, "Check Status")
-                            .on_press(ViewMessage::BuySell(BuySellMessage::MavapayCheckPaymentStatus(payment_status.quote_id.clone())))
-                            .width(Length::Fill)
+                            .on_press(ViewMessage::BuySell(
+                                BuySellMessage::MavapayCheckPaymentStatus(
+                                    payment_status.quote_id.clone(),
+                                ),
+                            ))
+                            .width(Length::Fill),
                     );
             }
 

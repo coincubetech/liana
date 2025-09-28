@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[cfg(feature = "buysell")]
-use crate::services::mavapay::{QuoteResponse, PriceResponse, Transaction, PaymentStatusResponse};
+use crate::services::mavapay::{PaymentStatusResponse, PriceResponse, QuoteResponse, Transaction};
 use liana::miniscript::bitcoin::{bip32::Fingerprint, Address, OutPoint};
 
 pub trait Close {
