@@ -29,6 +29,7 @@ lianad = { path = "../lianad", default-features = false, features = [
 liana-ui = { path = "../liana-ui" }
 backtrace = "0.3"
 hex = "0.4.3"
+dotenv = "0.15"
 
 iced = { version = "0.13.1", default-features = false, features = [
 	"tokio",

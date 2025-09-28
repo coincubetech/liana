@@ -57,6 +57,10 @@ pub struct BuySellPanel {
     #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
     pub registration_client: crate::services::registration::RegistrationClient,
 
+    // Mavapay API client
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    pub mavapay_client: crate::services::mavapay::MavapayClient,
+
     // Default build: account type selection state
     #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
     pub selected_account_type: Option<crate::app::view::message::AccountType>,
@@ -80,6 +84,32 @@ pub struct BuySellPanel {
     pub terms_accepted: bool,
     #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
     pub email_verification_status: Option<bool>, // None = checking, Some(true) = verified, Some(false) = pending
+
+    // Mavapay form fields
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    pub mavapay_amount: form::Value<String>,
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    pub mavapay_source_currency: form::Value<String>,
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    pub mavapay_target_currency: form::Value<String>,
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    pub mavapay_bank_account_number: form::Value<String>,
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    pub mavapay_bank_account_name: form::Value<String>,
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    pub mavapay_bank_code: form::Value<String>,
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    pub mavapay_bank_name: form::Value<String>,
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    pub mavapay_current_quote: Option<crate::services::mavapay::QuoteResponse>,
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    pub mavapay_current_price: Option<crate::services::mavapay::PriceResponse>,
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    pub mavapay_transactions: Vec<crate::services::mavapay::Transaction>,
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    pub mavapay_payment_status: Option<crate::services::mavapay::PaymentStatusResponse>,
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    pub mavapay_polling_active: bool,
 }
 
 #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
@@ -89,6 +119,7 @@ pub enum NativePage {
     Login,
     Register,
     VerifyEmail,
+    CoincubePay,
 }
 
 impl BuySellPanel {
@@ -164,6 +195,51 @@ impl BuySellPanel {
             registration_client: crate::services::registration::RegistrationClient::new(
                 "https://dev-api.coincube.io/api/v1".to_string(),
             ),
+            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            mavapay_client: crate::services::mavapay::MavapayClient::new(
+                std::env::var("MAVAPAY_API_KEY").unwrap_or_else(|_| {
+                    tracing::warn!("MAVAPAY_API_KEY environment variable not set");
+                    String::new()
+                }),
+            ),
+
+            // Mavapay form defaults
+            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            mavapay_amount: form::Value {
+                value: "100000".to_string(), // 100,000 sats default
+                warning: None,
+                valid: true,
+            },
+            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            mavapay_source_currency: form::Value {
+                value: "BTCSAT".to_string(),
+                warning: None,
+                valid: true,
+            },
+            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            mavapay_target_currency: form::Value {
+                value: "NGNKOBO".to_string(),
+                warning: None,
+                valid: true,
+            },
+            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            mavapay_bank_account_number: form::Value::default(),
+            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            mavapay_bank_account_name: form::Value::default(),
+            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            mavapay_bank_code: form::Value::default(),
+            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            mavapay_bank_name: form::Value::default(),
+            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            mavapay_current_quote: None,
+            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            mavapay_current_price: None,
+            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            mavapay_transactions: Vec::new(),
+            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            mavapay_payment_status: None,
+            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            mavapay_polling_active: false,
         }
     }
 
@@ -379,6 +455,7 @@ impl BuySellPanel {
             NativePage::Login => self.native_login_form(),
             NativePage::Register => self.native_register_form(),
             NativePage::VerifyEmail => self.native_verify_email_form(),
+            NativePage::CoincubePay => self.coincube_pay_form(),
         }
     }
 
@@ -1028,5 +1105,323 @@ impl BuySellPanel {
             .spacing(5)
             .max_width(500)
             .width(Length::Fill)
+    }
+
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    fn coincube_pay_form<'a>(&'a self) -> Column<'a, ViewMessage> {
+        use liana_ui::component::{button as ui_button, text as ui_text};
+
+        let header = Row::new()
+            .push(
+                Row::new()
+                    .push(ui_text::h4_bold("COINCUBE").color(color::ORANGE))
+                    .push(ui_text::h4_bold(" PAY").color(color::WHITE))
+                    .spacing(0),
+            )
+            .push(Space::with_width(Length::Fixed(8.0)))
+            .push(ui_text::h5_regular("Bitcoin ↔ Fiat Exchange").color(color::GREY_3));
+
+        let mut column = Column::new()
+            .push(header)
+            .push(Space::with_height(Length::Fixed(20.0)));
+
+        // Error display
+        if let Some(error) = &self.error {
+            column = column.push(
+                Container::new(text(error).size(14).color(color::RED))
+                    .padding(10)
+                    .style(theme::card::invalid)
+            ).push(Space::with_height(Length::Fixed(10.0)));
+        }
+
+        // Current price display
+        if let Some(price) = &self.mavapay_current_price {
+            column = column.push(
+                Container::new(
+                    Row::new()
+                        .push(bitcoin_icon().size(20).color(color::ORANGE))
+                        .push(Space::with_width(Length::Fixed(10.0)))
+                        .push(text(format!("1 BTC = {:.2} {}", price.price, price.currency)).size(16).color(color::WHITE))
+                        .align_y(Alignment::Center)
+                )
+                .padding(15)
+                .style(theme::card::simple)
+            ).push(Space::with_height(Length::Fixed(15.0)));
+        }
+
+        // Quick actions
+        let actions_row = Row::new()
+            .push(
+                ui_button::primary(None, "Get Price")
+                    .on_press(ViewMessage::BuySell(BuySellMessage::MavapayGetPrice))
+                    .width(Length::Fixed(120.0))
+            )
+            .push(Space::with_width(Length::Fixed(10.0)))
+            .push(
+                ui_button::secondary(None, "View Transactions")
+                    .on_press(ViewMessage::BuySell(BuySellMessage::MavapayGetTransactions))
+                    .width(Length::Fixed(150.0))
+            )
+            .spacing(10);
+
+        column = column
+            .push(actions_row)
+            .push(Space::with_height(Length::Fixed(20.0)));
+
+        // Exchange form
+        let exchange_form = Container::new(
+            Column::new()
+                .push(
+                    Row::new()
+                        .push(text("💱").size(20))
+                        .push(Space::with_width(Length::Fixed(10.0)))
+                        .push(ui_text::h5_medium("Create Exchange Quote").color(color::WHITE))
+                        .align_y(Alignment::Center)
+                )
+                .push(Space::with_height(Length::Fixed(15.0)))
+                .push(
+                    Row::new()
+                        .push(
+                            Column::new()
+                                .push(text("Amount").size(14).color(color::GREY_3))
+                                .push(Space::with_height(Length::Fixed(5.0)))
+                                .push(
+                                    form::Form::new_trimmed("100000", &self.mavapay_amount, |value| {
+                                        ViewMessage::BuySell(BuySellMessage::MavapayAmountChanged(value))
+                                    })
+                                    .size(14)
+                                    .padding(10)
+                                )
+                                .width(Length::Fixed(120.0))
+                        )
+                        .push(Space::with_width(Length::Fixed(10.0)))
+                        .push(
+                            Column::new()
+                                .push(text("From").size(14).color(color::GREY_3))
+                                .push(Space::with_height(Length::Fixed(5.0)))
+                                .push(
+                                    form::Form::new_trimmed("BTCSAT", &self.mavapay_source_currency, |value| {
+                                        ViewMessage::BuySell(BuySellMessage::MavapaySourceCurrencyChanged(value))
+                                    })
+                                    .size(14)
+                                    .padding(10)
+                                )
+                                .width(Length::Fixed(100.0))
+                        )
+                        .push(Space::with_width(Length::Fixed(10.0)))
+                        .push(
+                            Column::new()
+                                .push(text("To").size(14).color(color::GREY_3))
+                                .push(Space::with_height(Length::Fixed(5.0)))
+                                .push(
+                                    form::Form::new_trimmed("NGNKOBO", &self.mavapay_target_currency, |value| {
+                                        ViewMessage::BuySell(BuySellMessage::MavapayTargetCurrencyChanged(value))
+                                    })
+                                    .size(14)
+                                    .padding(10)
+                                )
+                                .width(Length::Fixed(100.0))
+                        )
+                        .spacing(10)
+                )
+                .push(Space::with_height(Length::Fixed(15.0)))
+                // Bank Account Details Section
+                .push(text("Bank Account Details").size(16).color(color::WHITE))
+                .push(Space::with_height(Length::Fixed(10.0)))
+                .push(
+                    Row::new()
+                        .push(
+                            Column::new()
+                                .push(text("Account Number").size(14).color(color::GREY_3))
+                                .push(Space::with_height(Length::Fixed(5.0)))
+                                .push(
+                                    form::Form::new_trimmed("1234567890", &self.mavapay_bank_account_number, |value| {
+                                        ViewMessage::BuySell(BuySellMessage::MavapayBankAccountNumberChanged(value))
+                                    })
+                                    .size(14)
+                                    .padding(10)
+                                )
+                                .width(Length::Fixed(150.0))
+                        )
+                        .push(Space::with_width(Length::Fixed(10.0)))
+                        .push(
+                            Column::new()
+                                .push(text("Account Name").size(14).color(color::GREY_3))
+                                .push(Space::with_height(Length::Fixed(5.0)))
+                                .push(
+                                    form::Form::new_trimmed("John Doe", &self.mavapay_bank_account_name, |value| {
+                                        ViewMessage::BuySell(BuySellMessage::MavapayBankAccountNameChanged(value))
+                                    })
+                                    .size(14)
+                                    .padding(10)
+                                )
+                                .width(Length::Fixed(150.0))
+                        )
+                        .spacing(10)
+                )
+                .push(Space::with_height(Length::Fixed(10.0)))
+                .push(
+                    Row::new()
+                        .push(
+                            Column::new()
+                                .push(text("Bank Code").size(14).color(color::GREY_3))
+                                .push(Space::with_height(Length::Fixed(5.0)))
+                                .push(
+                                    form::Form::new_trimmed("011", &self.mavapay_bank_code, |value| {
+                                        ViewMessage::BuySell(BuySellMessage::MavapayBankCodeChanged(value))
+                                    })
+                                    .size(14)
+                                    .padding(10)
+                                )
+                                .width(Length::Fixed(100.0))
+                        )
+                        .push(Space::with_width(Length::Fixed(10.0)))
+                        .push(
+                            Column::new()
+                                .push(text("Bank Name").size(14).color(color::GREY_3))
+                                .push(Space::with_height(Length::Fixed(5.0)))
+                                .push(
+                                    form::Form::new_trimmed("First Bank", &self.mavapay_bank_name, |value| {
+                                        ViewMessage::BuySell(BuySellMessage::MavapayBankNameChanged(value))
+                                    })
+                                    .size(14)
+                                    .padding(10)
+                                )
+                                .width(Length::Fixed(200.0))
+                        )
+                        .spacing(10)
+                )
+                .push(Space::with_height(Length::Fixed(15.0)))
+                .push(
+                    ui_button::primary(None, "Create Quote")
+                        .on_press(ViewMessage::BuySell(BuySellMessage::MavapayCreateQuote))
+                        .width(Length::Fill)
+                )
+                .spacing(5)
+        )
+        .padding(20)
+        .style(theme::card::simple);
+
+        column = column.push(exchange_form);
+
+        // Quote display with payment confirmation
+        if let Some(quote) = &self.mavapay_current_quote {
+            let mut quote_column = Column::new()
+                .push(ui_text::h5_medium("Quote Created Successfully").color(color::GREEN))
+                .push(Space::with_height(Length::Fixed(10.0)))
+                .push(
+                    Row::new()
+                        .push(text("Amount: ").size(14).color(color::GREY_3))
+                        .push(text(format!("{} sats", quote.total_amount_in_source_currency)).size(14).color(color::WHITE))
+                )
+                .push(
+                    Row::new()
+                        .push(text("Rate: ").size(14).color(color::GREY_3))
+                        .push(text(format!("{:.2}", quote.exchange_rate)).size(14).color(color::WHITE))
+                )
+                .push(
+                    Row::new()
+                        .push(text("Expires: ").size(14).color(color::GREY_3))
+                        .push(text(&quote.expiry).size(14).color(color::ORANGE))
+                );
+
+            // Show payment details if available
+            if let Some(payment_details) = &quote.invoice {
+                quote_column = quote_column
+                    .push(Space::with_height(Length::Fixed(10.0)))
+                    .push(text("Lightning Invoice:").size(14).color(color::GREY_3))
+                    .push(
+                        Container::new(
+                            text(payment_details)
+                                .size(12)
+                                .color(color::WHITE)
+                        )
+                        .padding(10)
+                        .style(theme::card::simple)
+                    );
+            }
+
+            quote_column = quote_column
+                .push(Space::with_height(Length::Fixed(15.0)))
+                .push(
+                    ui_button::primary(None, "Confirm Payment")
+                        .on_press(ViewMessage::BuySell(BuySellMessage::MavapayConfirmPayment(quote.id.clone())))
+                        .width(Length::Fill)
+                );
+
+            let quote_display = Container::new(quote_column.spacing(5))
+                .padding(20)
+                .style(theme::card::simple);
+
+            column = column
+                .push(Space::with_height(Length::Fixed(15.0)))
+                .push(quote_display);
+        }
+
+        // Payment status display
+        if let Some(payment_status) = &self.mavapay_payment_status {
+            let status_color = match payment_status.status.as_str() {
+                "PAID" | "SUCCESS" => color::GREEN,
+                "FAILED" => color::RED,
+                "PENDING" => color::ORANGE,
+                _ => color::GREY_3,
+            };
+
+            let mut status_column = Column::new()
+                .push(
+                    Row::new()
+                        .push(text("💳").size(20))
+                        .push(Space::with_width(Length::Fixed(10.0)))
+                        .push(ui_text::h5_medium("Payment Status").color(color::WHITE))
+                        .align_y(Alignment::Center)
+                )
+                .push(Space::with_height(Length::Fixed(10.0)))
+                .push(
+                    Row::new()
+                        .push(text("Status: ").size(14).color(color::GREY_3))
+                        .push(text(&payment_status.status).size(14).color(status_color))
+                )
+                .push(
+                    Row::new()
+                        .push(text("Amount: ").size(14).color(color::GREY_3))
+                        .push(text(format!("{} {}", payment_status.amount, payment_status.currency)).size(14).color(color::WHITE))
+                );
+
+            if self.mavapay_polling_active {
+                status_column = status_column
+                    .push(Space::with_height(Length::Fixed(10.0)))
+                    .push(
+                        Row::new()
+                            .push(text("🔄").size(16))
+                            .push(Space::with_width(Length::Fixed(5.0)))
+                            .push(text("Monitoring payment...").size(14).color(color::ORANGE))
+                            .align_y(Alignment::Center)
+                    )
+                    .push(Space::with_height(Length::Fixed(10.0)))
+                    .push(
+                        ui_button::secondary(None, "Stop Monitoring")
+                            .on_press(ViewMessage::BuySell(BuySellMessage::MavapayStopPolling))
+                            .width(Length::Fill)
+                    );
+            } else if payment_status.status == "PENDING" {
+                status_column = status_column
+                    .push(Space::with_height(Length::Fixed(10.0)))
+                    .push(
+                        ui_button::primary(None, "Check Status")
+                            .on_press(ViewMessage::BuySell(BuySellMessage::MavapayCheckPaymentStatus(payment_status.quote_id.clone())))
+                            .width(Length::Fill)
+                    );
+            }
+
+            let status_display = Container::new(status_column.spacing(5))
+                .padding(20)
+                .style(theme::card::simple);
+
+            column = column
+                .push(Space::with_height(Length::Fixed(15.0)))
+                .push(status_display);
+        }
+
+        column.spacing(10)
     }
 }

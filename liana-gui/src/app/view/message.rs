@@ -5,6 +5,9 @@ use crate::{
     node::bitcoind::RpcAuthType,
     services::fiat::{Currency, PriceSource},
 };
+
+#[cfg(feature = "buysell")]
+use crate::services::mavapay::{QuoteResponse, PriceResponse, Transaction, PaymentStatusResponse};
 use liana::miniscript::bitcoin::{bip32::Fingerprint, Address, OutPoint};
 
 pub trait Close {
@@ -197,6 +200,60 @@ pub enum BuySellMessage {
     LoginSuccess(crate::services::registration::LoginResponse),
     #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
     LoginError(String),
+
+    // Mavapay-specific messages (native flow)
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayDashboard,
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayAmountChanged(String),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapaySourceCurrencyChanged(String),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayTargetCurrencyChanged(String),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayBankAccountNumberChanged(String),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayBankAccountNameChanged(String),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayBankCodeChanged(String),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayBankNameChanged(String),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayCreateQuote,
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayQuoteCreated(QuoteResponse),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayQuoteError(String),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayConfirmQuote,
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayGetPrice,
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayPriceReceived(PriceResponse),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayPriceError(String),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayGetTransactions,
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayTransactionsReceived(Vec<Transaction>),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayTransactionsError(String),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayConfirmPayment(String), // quote_id
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayPaymentConfirmed(PaymentStatusResponse),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayPaymentConfirmationError(String),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayCheckPaymentStatus(String), // quote_id
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayPaymentStatusUpdated(PaymentStatusResponse),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayPaymentStatusError(String),
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayStartPolling(String), // quote_id
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    MavapayStopPolling,
 
     // Shared form fields (for provider-integrated builds)
     WalletAddressChanged(String),
