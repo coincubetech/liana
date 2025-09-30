@@ -255,6 +255,47 @@ impl MavapayClient {
         Ok(api_response.data)
     }
 
+
+    /// Create a hosted checkout payment link
+    pub async fn create_payment_link(&self, request: PaymentLinkRequest) -> Result<String, MavapayError> {
+        #[cfg(debug_assertions)]
+        tracing::debug!(
+            "[PAYMENT_LINK] Request: {}",
+            serde_json::to_string_pretty(&request).unwrap_or_default()
+        );
+
+        let response = self
+            .request(Method::POST, "paymentlink")
+            .json(&request)
+            .send()
+            .await?
+            .check_success()
+            .await?;
+
+        // Try to parse standard { status, data } wrapper
+        let try_wrapped: Result<ApiResponse<PaymentLinkResponse>, _> = response.json().await;
+        if let Ok(api_response) = try_wrapped {
+            if api_response.status != "ok" {
+                return Err(MavapayError::InvalidResponse("API returned non-ok status".to_string()));
+            }
+            return Ok(api_response.data.url);
+        }
+
+        // Fallback: parse as plain { url: "..." }
+        let fallback: PaymentLinkResponse = self
+            .request(Method::POST, "paymentlink")
+            .json(&request)
+            .send()
+            .await?
+            .check_success()
+            .await?
+            .json()
+            .await
+            .map_err(|e| MavapayError::InvalidResponse(format!("Failed to parse payment link: {}", e)))?;
+
+        Ok(fallback.url)
+    }
+
     /// Get list of supported banks for a country
     pub async fn get_banks(&self, country_code: &str) -> Result<Vec<BankInfo>, MavapayError> {
         let response = self

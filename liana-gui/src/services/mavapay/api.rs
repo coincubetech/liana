@@ -155,6 +155,29 @@ pub struct QuoteRequest {
     pub beneficiary: Beneficiary,
 }
 
+/// Payment link request (hosted checkout)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaymentLinkRequest {
+    pub amount: String,
+    #[serde(rename = "sourceCurrency")]
+    pub source_currency: Currency,
+    #[serde(rename = "targetCurrency")]
+    pub target_currency: Currency,
+    #[serde(rename = "paymentMethod")]
+    pub payment_method: PaymentMethod,
+    #[serde(rename = "paymentCurrency")]
+    pub payment_currency: Currency,
+    pub beneficiary: Beneficiary,
+}
+
+/// Payment link response
+#[derive(Debug, Clone, Deserialize)]
+pub struct PaymentLinkResponse {
+    #[serde(rename = "url")]
+    pub url: String,
+}
+
+
 /// Quote response
 #[derive(Debug, Clone, Deserialize)]
 pub struct QuoteResponse {

@@ -1151,7 +1151,16 @@ impl BuySellPanel {
         .padding(20)
         .style(theme::card::simple);
 
-        column = column.push(exchange_form);
+        column = column
+            .push(exchange_form)
+            .push(Space::with_height(Length::Fixed(10.0)))
+            .push(text("--- OR ---").size(12).color(color::GREY_3))
+            .push(Space::with_height(Length::Fixed(10.0)))
+            .push(
+                ui_button::primary(None, "Open Secure Checkout")
+                    .on_press(ViewMessage::BuySell(BuySellMessage::MavapayOpenPaymentLink))
+                    .width(Length::Fill),
+            );
 
         // Quote display with payment confirmation
         if let Some(quote) = &state.mavapay_current_quote {

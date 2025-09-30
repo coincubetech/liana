@@ -674,6 +674,10 @@ impl State for BuySellPanel {
                 }
             }
 
+            BuySellMessage::MavapayOpenPaymentLink => {
+                return self.handle_mavapay_open_payment_link();
+            }
+
             BuySellMessage::CreateSession => {
                 // Legacy handler - now use OpenMeld/OpenOnramper instead
                 self.set_error("Please select a provider (Meld or Onramper)".into());
@@ -703,7 +707,10 @@ impl State for BuySellPanel {
             }
             BuySellMessage::WebviewOpenUrl(url) => {
                 // Load URL into Ultralight webview
+                #[cfg(debug_assertions)]
                 tracing::info!("🌐 [LIANA] Loading Ultralight webview with URL: {}", url);
+                #[cfg(not(debug_assertions))]
+                tracing::info!("🌐 [LIANA] Opening embedded webview");
                 self.session_url = Some(url.clone());
 
                 // Create webview with URL string and immediately update to ensure content loads
@@ -892,6 +899,94 @@ impl BuySellPanel {
             },
         )
     }
+    fn handle_mavapay_open_payment_link(&self) -> Task<Message> {
+        use crate::services::mavapay::{Currency, PaymentLinkRequest, PaymentMethod};
+
+        let Some(state) = self.africa_state() else {
+            return Task::none();
+        };
+
+        // Validate minimally required fields (reuse validations from quote creation)
+        if state.mavapay_bank_account_number.value.is_empty()
+            || state.mavapay_bank_account_name.value.is_empty()
+            || state.mavapay_bank_code.value.is_empty()
+            || state.mavapay_bank_name.value.is_empty()
+        {
+            return Task::done(Message::View(ViewMessage::BuySell(
+                BuySellMessage::MavapayQuoteError(
+                    "Missing required bank account details for payment link".to_string(),
+                ),
+            )));
+        }
+
+        let amount = match state.mavapay_amount.value.parse::<u64>() {
+            Ok(amt) => amt,
+            Err(_) => {
+                return Task::done(Message::View(ViewMessage::BuySell(
+                    BuySellMessage::MavapayQuoteError("Invalid amount".to_string()),
+                )));
+            }
+        };
+
+        let source_currency = match state.mavapay_source_currency.value.as_str() {
+            "BTCSAT" => Currency::BitcoinSatoshi,
+            "NGNKOBO" => Currency::NigerianNairaKobo,
+            "ZARCENT" => Currency::SouthAfricanRandCent,
+            "KESCENT" => Currency::KenyanShillingCent,
+            _ => {
+                return Task::done(Message::View(ViewMessage::BuySell(
+                    BuySellMessage::MavapayQuoteError("Invalid source currency".to_string()),
+                )));
+            }
+        };
+
+        let target_currency = match state.mavapay_target_currency.value.as_str() {
+            "BTCSAT" => Currency::BitcoinSatoshi,
+            "NGNKOBO" => Currency::NigerianNairaKobo,
+            "ZARCENT" => Currency::SouthAfricanRandCent,
+            "KESCENT" => Currency::KenyanShillingCent,
+            _ => {
+                return Task::done(Message::View(ViewMessage::BuySell(
+                    BuySellMessage::MavapayQuoteError("Invalid target currency".to_string()),
+                )));
+            }
+        };
+
+        let request = PaymentLinkRequest {
+            amount: amount.to_string(),
+            source_currency,
+            target_currency,
+            payment_method: PaymentMethod::Lightning,
+            payment_currency: target_currency,
+            beneficiary: crate::services::mavapay::Beneficiary::Bank(
+                crate::services::mavapay::BankAccount {
+                    account_number: state.mavapay_bank_account_number.value.clone(),
+                    account_name: state.mavapay_bank_account_name.value.clone(),
+                    bank_code: state.mavapay_bank_code.value.clone(),
+                    bank_name: state.mavapay_bank_name.value.clone(),
+                },
+            ),
+        };
+
+        let client = state.mavapay_client.clone();
+        #[cfg(debug_assertions)]
+        tracing::info!(
+            "[PAYMENT_LINK] Creating link with {}/{} amount {}",
+            request.source_currency.as_str(),
+            request.target_currency.as_str(),
+            request.amount
+        );
+        Task::perform(
+            async move { client.create_payment_link(request).await },
+            |result| match result {
+                Ok(url) => Message::View(ViewMessage::BuySell(BuySellMessage::WebviewOpenUrl(url))),
+                Err(error) => Message::View(ViewMessage::BuySell(BuySellMessage::MavapayQuoteError(
+                    format!("Payment link error: {}", error)
+                ))),
+            },
+        )
+    }
+
 
     fn handle_mavapay_get_price(&self) -> Task<Message> {
         let Some(state) = self.africa_state() else {

@@ -198,6 +198,7 @@ pub enum BuySellMessage {
     MavapayBankCodeChanged(String),
     MavapayBankNameChanged(String),
     MavapayCreateQuote,
+    MavapayOpenPaymentLink,
     MavapayQuoteCreated(QuoteResponse),
     MavapayQuoteError(String),
     MavapayConfirmQuote,

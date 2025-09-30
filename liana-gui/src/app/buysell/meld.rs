@@ -138,12 +138,19 @@ impl MeldClient {
             external_customer_id: unique_customer_id,
         };
 
-        // Debug logging
-        tracing::info!("Sending request to: {}", MELD_API_BASE_URL);
-        tracing::info!(
-            "Request body: {}",
-            serde_json::to_string_pretty(&request).unwrap_or_default()
-        );
+        // Security: Only log sensitive request details in debug builds
+        #[cfg(debug_assertions)]
+        {
+            tracing::info!("Sending request to: {}", MELD_API_BASE_URL);
+            tracing::info!(
+                "Request body: {}",
+                serde_json::to_string_pretty(&request).unwrap_or_default()
+            );
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            tracing::info!("[MELD] Widget session request initiated");
+        }
 
         // Resolve Authorization header from env (.env at runtime, or compile-time env)
         let auth = match meld_auth_header() {
@@ -165,7 +172,10 @@ impl MeldClient {
 
         if response.status().is_success() {
             let session_response: MeldSessionResponse = response.json().await?;
+            #[cfg(debug_assertions)]
             tracing::info!("Meld API response: {:?}", session_response);
+            #[cfg(not(debug_assertions))]
+            tracing::info!("[MELD] Widget session created successfully");
 
             Ok(session_response)
         } else {
