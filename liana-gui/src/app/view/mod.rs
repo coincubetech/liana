@@ -8,7 +8,6 @@ pub mod fiat;
 pub mod home;
 pub mod hw;
 
-#[cfg(feature = "buysell")]
 pub mod buysell;
 
 pub mod psbt;

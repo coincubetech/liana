@@ -13,11 +13,6 @@ resolver = "2"
 name = "coincube-vault"
 path = "src/main.rs"
 
-[features]
-dev-meld = ["webview"]
-dev-onramp = ["webview"]
-webview = ["iced_webview"]
-buysell = []
 
 [dependencies]
 async-trait = "0.1"
@@ -48,7 +43,7 @@ iced_runtime = "0.13.1"
 # Webview for embedded browser functionality (Ultralight-based)
 iced_webview = { git = "https://github.com/coincubetech/iced_webview.git", features = [
 	"ultralight",
-], optional = true }
+] }
 
 # Used to verify RFC-compliance of an email
 email_address = "0.2.7"

@@ -6,7 +6,6 @@ use crate::{
     services::fiat::{Currency, PriceSource},
 };
 
-#[cfg(feature = "buysell")]
 use crate::services::mavapay::{PaymentStatusResponse, PriceResponse, QuoteResponse, Transaction};
 use liana::miniscript::bitcoin::{bip32::Fingerprint, Address, OutPoint};
 
@@ -30,7 +29,6 @@ pub enum Message {
     Settings(SettingsMessage),
     CreateSpend(CreateSpendMessage),
     ImportSpend(ImportSpendMessage),
-    #[cfg(feature = "buysell")]
     BuySell(BuySellMessage),
     Spend(SpendTxMessage),
     Next,
@@ -135,7 +133,6 @@ pub enum SettingsEditMessage {
     Confirm,
     Clipboard(String),
 }
-#[cfg(feature = "buysell")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccountType {
     Individual,
@@ -150,7 +147,6 @@ pub enum CreateRbfMessage {
     Confirm,
 }
 
-#[cfg(feature = "buysell")]
 #[derive(Debug, Clone)]
 pub enum BuySellMessage {
     // Native login (default build)
@@ -164,6 +160,12 @@ pub enum BuySellMessage {
     AccountTypeSelected(AccountType),
     #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
     GetStarted,
+
+    // Geolocation detection
+    DetectRegion,
+    RegionDetected(String, String), // (region, country)
+    RegionDetectionError(String),
+
 
     // Default build: registration form (native flow)
     #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
@@ -264,18 +266,17 @@ pub enum BuySellMessage {
     SourceAmountChanged(String),
 
     CreateSession,
+    // Provider selection for international users
+    OpenMeld,
+    OpenOnramper,
+
     SessionError(String),
 
     // webview messages (gated)
-    #[cfg(feature = "webview")]
     WebviewCreated(iced_webview::ViewId),
-    #[cfg(feature = "webview")]
     ViewTick(iced_webview::ViewId),
-    #[cfg(feature = "webview")]
     WebviewAction(iced_webview::advanced::Action),
-    #[cfg(feature = "webview")]
     WebviewOpenUrl(String),
-    #[cfg(feature = "webview")]
     CloseWebview,
 }
 

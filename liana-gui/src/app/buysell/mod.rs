@@ -137,8 +137,5 @@ impl fmt::Display for ServiceProvider {
     }
 }
 
-#[cfg(feature = "dev-meld")]
 pub mod meld;
-
-#[cfg(feature = "dev-onramp")]
 pub mod onramper;

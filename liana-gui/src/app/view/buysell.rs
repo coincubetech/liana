@@ -7,7 +7,6 @@ use iced::{
     widget::{container, Space},
     Alignment, Length,
 };
-#[cfg(feature = "webview")]
 use iced_webview::{advanced::WebView, Ultralight};
 
 use liana::miniscript::bitcoin::Network;
@@ -19,7 +18,6 @@ use liana_ui::{
     widget::*,
 };
 
-#[cfg(feature = "dev-meld")]
 use crate::app::buysell::meld::MeldClient;
 use crate::app::view::{BuySellMessage, Message as ViewMessage};
 
@@ -34,19 +32,21 @@ pub struct BuySellPanel {
     pub error: Option<String>,
     pub network: Network,
 
-    #[cfg(feature = "dev-meld")]
+
+    // Geolocation detection state
+    pub detected_region: Option<String>,
+    pub detected_country: Option<String>,
+    pub region_detection_failed: bool,
+
     pub meld_client: MeldClient,
 
     // Ultralight webview component for Meld widget integration with performance optimizations
-    #[cfg(feature = "webview")]
     pub webview: Option<WebView<Ultralight, crate::app::state::buysell::WebviewMessage>>,
 
     // Current webview page url
-    #[cfg(feature = "webview")]
     pub session_url: Option<String>,
 
     // Current active webview "page": view_id
-    #[cfg(feature = "webview")]
     pub active_page: Option<iced_webview::ViewId>,
 
     // Native login fields
@@ -148,7 +148,6 @@ impl BuySellPanel {
                 valid: true,
             },
 
-            #[cfg(feature = "dev-meld")]
             meld_client: MeldClient::new(),
             #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             selected_account_type: None,
@@ -158,12 +157,14 @@ impl BuySellPanel {
             error: None,
             network,
 
-            #[cfg(feature = "webview")]
             webview: None,
-            #[cfg(feature = "webview")]
             session_url: None,
-            #[cfg(feature = "webview")]
             active_page: None,
+
+            // Geolocation defaults
+            detected_region: None,
+            detected_country: None,
+            region_detection_failed: false,
 
             login_username: form::Value {
                 value: String::new(),
@@ -348,7 +349,6 @@ impl BuySellPanel {
     pub fn view<'a>(&'a self) -> Container<'a, ViewMessage> {
         Container::new({
             // attempt to render webview (if available)
-            #[cfg(feature = "webview")]
             let webview_widget = self
                 .active_page
                 .as_ref()
@@ -360,7 +360,6 @@ impl BuySellPanel {
                 })
                 .flatten();
 
-            #[cfg(feature = "webview")]
             let column = match webview_widget {
                 Some(w) => Column::new()
                     .push(
@@ -435,8 +434,8 @@ impl BuySellPanel {
                     .push(self.form_view()),
             };
 
-            #[cfg(not(feature = "webview"))]
-            let column = Column::new().push(self.form_view());
+            // webview always enabled by default
+            // let column = Column::new().push(self.form_view());
 
             column
                 .align_x(Alignment::Center)
@@ -450,6 +449,9 @@ impl BuySellPanel {
 
     #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
     fn form_view<'a>(&'a self) -> Column<'a, ViewMessage> {
+        if self.detected_region.as_deref() == Some("international") || self.region_detection_failed {
+            return self.provider_selection_form();
+        }
         match self.native_page {
             NativePage::AccountSelect => self.native_account_select_form(),
             NativePage::Login => self.native_login_form(),
@@ -459,12 +461,48 @@ impl BuySellPanel {
         }
     }
 
+    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    fn provider_selection_form<'a>(&'a self) -> Column<'a, ViewMessage> {
+        use liana_ui::component::{button as ui_button, text as ui_text};
+        let info = if let Some(country) = &self.detected_country {
+            format!("International region detected (country: {}). Choose a provider:", country)
+        } else {
+            "Choose a provider:".to_string()
+        };
+        Column::new()
+            .push_maybe(self.error.as_ref().map(|err| {
+                Container::new(text(err).size(14).color(color::RED))
+                    .padding(10)
+                    .style(theme::card::simple)
+            }))
+            .push(Space::with_height(Length::Fixed(10.0)))
+            .push(ui_text::p1_bold(&info).color(color::WHITE))
+            .push(Space::with_height(Length::Fixed(15.0)))
+            .push(
+                ui_button::primary(None, "Continue with Meld")
+                    .on_press(ViewMessage::BuySell(BuySellMessage::OpenMeld))
+                    .width(Length::Fill),
+            )
+            .push(Space::with_height(Length::Fixed(10.0)))
+            .push(
+                ui_button::primary(None, "Continue with Onramper")
+                    .on_press(ViewMessage::BuySell(BuySellMessage::OpenOnramper))
+                    .width(Length::Fill),
+            )
+            .align_x(Alignment::Center)
+            .spacing(10)
+            .max_width(500)
+            .width(Length::Fill)
+    }
+
+
     #[cfg(any(feature = "dev-meld", feature = "dev-onramp"))]
     fn form_view<'a>(&'a self) -> Column<'a, ViewMessage> {
         Column::new()
             .push_maybe(self.error.as_ref().map(|err| {
                 Container::new(text(err).size(14).color(color::RED))
                     .padding(10)
+
                     .style(theme::card::invalid)
             }))
             .push(Space::with_height(Length::Fixed(20.0)))

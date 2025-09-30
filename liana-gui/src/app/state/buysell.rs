@@ -4,7 +4,6 @@ use std::sync::Arc;
 #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
 use crate::services::mavapay::{BankAccount, Beneficiary};
 
-#[cfg(feature = "webview")]
 use iced_webview::{
     advanced::{Action as WebviewAction, WebView},
     PageType,
@@ -19,6 +18,8 @@ use crate::app::buysell::onramper;
 
 #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
 use crate::app::view::buysell::NativePage;
+use crate::app::buysell::{onramper, meld::MeldError, ServiceProvider};
+
 
 use crate::{
     app::{
@@ -31,7 +32,6 @@ use crate::{
     daemon::Daemon,
 };
 
-#[cfg(feature = "webview")]
 #[derive(Debug, Clone)]
 pub enum WebviewMessage {
     Action(iced_webview::advanced::Action),
@@ -39,7 +39,6 @@ pub enum WebviewMessage {
 }
 
 /// Map webview messages to main app messages (static version for Task::map)
-#[cfg(feature = "webview")]
 fn map_webview_message_static(webview_msg: WebviewMessage) -> Message {
     match webview_msg {
         WebviewMessage::Action(action) => {
@@ -52,7 +51,6 @@ fn map_webview_message_static(webview_msg: WebviewMessage) -> Message {
 }
 
 /// lazily initialize the webview to reduce latent memory usage
-#[cfg(feature = "webview")]
 fn init_webview() -> WebView<iced_webview::Ultralight, WebviewMessage> {
     WebView::new().on_create_view(crate::app::state::buysell::WebviewMessage::Created)
 }
@@ -68,6 +66,35 @@ impl State for BuySellPanel {
         // Return the meld view directly - dashboard wrapper will be applied by app/mod.rs
         view::dashboard(&app::Menu::BuySell, cache, None, self.view())
     }
+
+        fn reload(
+            &mut self,
+            _daemon: Arc<dyn Daemon + Sync + Send>,
+            _wallet: Arc<crate::app::wallet::Wallet>,
+        ) -> Task<Message> {
+            let locator = crate::services::geolocation::CachedGeoLocator::new_from_env();
+            Task::perform(
+                async move { locator.detect_region().await },
+                |result| match result {
+                    Ok((region, country)) => {
+                        let region_str = match region {
+                            crate::services::geolocation::Region::Africa => "africa".to_string(),
+                            crate::services::geolocation::Region::International => {
+                                "international".to_string()
+                            }
+                        };
+                        Message::View(ViewMessage::BuySell(BuySellMessage::RegionDetected(
+                            region_str,
+                            country,
+                        )))
+                    }
+                    Err(error) => Message::View(ViewMessage::BuySell(
+                        BuySellMessage::RegionDetectionError(error),
+                    )),
+                },
+            )
+        }
+
 
     fn update(
         &mut self,
@@ -109,6 +136,7 @@ impl State for BuySellPanel {
                     self.native_page = NativePage::Register;
                 }
                 #[cfg(any(feature = "dev-meld", feature = "dev-onramp"))]
+
                 {
                     self.set_error("Create Account not implemented yet".to_string());
                 }
@@ -142,6 +170,22 @@ impl State for BuySellPanel {
                 self.first_name.value = v;
                 self.first_name.valid = !self.first_name.value.is_empty();
             }
+            BuySellMessage::DetectRegion => {
+                // Detection is automatically triggered by reload(); nothing to do here
+            }
+            BuySellMessage::RegionDetected(region, country) => {
+                // Do not log IP addresses. Region/country are fine.
+                tracing::info!("region = {}, country = {}", region, country);
+                self.detected_region = Some(region);
+                self.detected_country = Some(country);
+                self.error = None;
+            }
+            BuySellMessage::RegionDetectionError(_error) => {
+                // Graceful fallback: show provider selection, no blocking error
+                self.region_detection_failed = true;
+                self.error = None;
+            }
+
             #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::LastNameChanged(v) => {
                 self.last_name.value = v;
@@ -442,6 +486,62 @@ impl State for BuySellPanel {
 
             // Mavapay message handlers
             #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            BuySellMessage::OpenOnramper => {
+                // Build Onramper widget URL and open in embedded webview
+                let currency = "USD".to_string();
+                let amount = if self.source_amount.value.is_empty() {
+                    "50".to_string()
+                } else {
+                    self.source_amount.value.clone()
+                };
+                let wallet = self.wallet_address.value.clone();
+                if let Some(url) = onramper::create_widget_url(&currency, &amount, &wallet) {
+                    return Task::done(Message::View(ViewMessage::BuySell(
+                        BuySellMessage::WebviewOpenUrl(url),
+                    )));
+                } else {
+                    self.set_error("Onramper API key not configured".to_string());
+                }
+            }
+            BuySellMessage::OpenMeld => {
+                // Create Meld widget session via API and open in embedded webview
+                let wallet_address = self.wallet_address.value.clone();
+                let country_code = self
+                    .detected_country
+                    .clone()
+                    .unwrap_or_else(|| "US".to_string());
+                let source_amount = if self.source_amount.value.is_empty() {
+                    "50".to_string()
+                } else {
+                    self.source_amount.value.clone()
+                };
+                let network = self.network;
+                let client = self.meld_client.clone();
+                return Task::perform(
+                    async move {
+                        client
+                            .create_widget_session(
+                                wallet_address,
+                                country_code,
+                                source_amount,
+                                ServiceProvider::Guardarian,
+                                network,
+                            )
+                            .await
+                            .map(|resp| resp.widget_url)
+                            .map_err(|e| format!("{}", e))
+                    },
+                    |result| match result {
+                        Ok(widget_url) => Message::View(ViewMessage::BuySell(
+                            BuySellMessage::WebviewOpenUrl(widget_url),
+                        )),
+                        Err(error) => Message::View(ViewMessage::BuySell(
+                            BuySellMessage::SessionError(error),
+                        )),
+                    },
+                );
+            }
+
             BuySellMessage::MavapayDashboard => {
                 self.native_page = NativePage::CoincubePay;
             }
@@ -681,7 +781,6 @@ impl State for BuySellPanel {
             }
 
             // webview logic
-            #[cfg(feature = "webview")]
             BuySellMessage::ViewTick(id) => {
                 let action = WebviewAction::Update(id);
                 return self
@@ -690,7 +789,6 @@ impl State for BuySellPanel {
                     .update(action)
                     .map(map_webview_message_static);
             }
-            #[cfg(feature = "webview")]
             BuySellMessage::WebviewAction(action) => {
                 return self
                     .webview
@@ -698,7 +796,6 @@ impl State for BuySellPanel {
                     .update(action)
                     .map(map_webview_message_static);
             }
-            #[cfg(feature = "webview")]
             BuySellMessage::WebviewOpenUrl(url) => {
                 // Load URL into Ultralight webview
                 tracing::info!("🌐 [LIANA] Loading Ultralight webview with URL: {}", url);
@@ -711,14 +808,12 @@ impl State for BuySellPanel {
                     .update(WebviewAction::CreateView(PageType::Url(url)))
                     .map(map_webview_message_static);
             }
-            #[cfg(feature = "webview")]
             BuySellMessage::WebviewCreated(id) => {
                 tracing::info!("🌐 [LIANA] Activating Webview Page: {}", id);
 
                 // set active page to selected view id
                 self.active_page = Some(id);
             }
-            #[cfg(feature = "webview")]
             BuySellMessage::CloseWebview => {
                 self.session_url = None;
 
@@ -736,33 +831,23 @@ impl State for BuySellPanel {
     }
 
     fn close(&mut self) -> Task<Message> {
-        #[cfg(feature = "webview")]
-        {
-            return Task::done(Message::View(ViewMessage::BuySell(
-                BuySellMessage::CloseWebview,
-            )));
-        }
-        #[cfg(not(feature = "webview"))]
-        {
-            Task::none()
-        }
+        Task::done(Message::View(ViewMessage::BuySell(
+            BuySellMessage::CloseWebview,
+        )))
     }
 
     fn subscription(&self) -> iced::Subscription<Message> {
-        #[cfg(feature = "webview")]
-        {
-            use std::time::Duration;
+        use std::time::Duration;
 
-            if let Some(id) = self.active_page {
-                let interval = if cfg!(debug_assertions) {
-                    Duration::from_millis(250)
-                } else {
-                    Duration::from_millis(100)
-                };
-                return iced::time::every(interval).with(id).map(|(i, ..)| {
-                    Message::View(ViewMessage::BuySell(BuySellMessage::ViewTick(i)))
-                });
-            }
+        if let Some(id) = self.active_page {
+            let interval = if cfg!(debug_assertions) {
+                Duration::from_millis(250)
+            } else {
+                Duration::from_millis(100)
+            };
+            return iced::time::every(interval).with(id).map(|(i, ..)| {
+                Message::View(ViewMessage::BuySell(BuySellMessage::ViewTick(i)))
+            });
         }
 
         iced::Subscription::none()

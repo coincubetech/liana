@@ -9,7 +9,6 @@ fn main() {
     // Fix for missing UltralightCore library link
     // The ul-next-sys build script is missing the UltralightCore link directive
     // but WebCore depends on symbols from UltralightCore (like FastBlur)
-    #[cfg(feature = "webview")]
     {
         println!("cargo:rustc-link-lib=dylib=UltralightCore");
     }

@@ -1,4 +1,3 @@
-#[cfg(feature = "buysell")]
 pub mod buysell;
 pub mod cache;
 pub mod config;
@@ -57,7 +56,6 @@ struct Panels {
     receive: ReceivePanel,
     create_spend: CreateSpendPanel,
     settings: SettingsState,
-    #[cfg(feature = "buysell")]
     buy_sell: crate::app::view::buysell::BuySellPanel,
 }
 
@@ -111,7 +109,6 @@ impl Panels {
                 internal_bitcoind.is_some(),
                 config.clone(),
             ),
-            #[cfg(feature = "buysell")]
             buy_sell: crate::app::view::buysell::BuySellPanel::new(cache.network),
         }
     }
@@ -129,7 +126,6 @@ impl Panels {
             Menu::Recovery => &self.recovery,
             Menu::RefreshCoins(_) => &self.create_spend,
             Menu::PsbtPreSelected(_) => &self.psbts,
-            #[cfg(feature = "buysell")]
             Menu::BuySell => &self.buy_sell,
         }
     }
@@ -147,7 +143,6 @@ impl Panels {
             Menu::Recovery => &mut self.recovery,
             Menu::RefreshCoins(_) => &mut self.create_spend,
             Menu::PsbtPreSelected(_) => &mut self.psbts,
-            #[cfg(feature = "buysell")]
             Menu::BuySell => &mut self.buy_sell,
         }
     }
