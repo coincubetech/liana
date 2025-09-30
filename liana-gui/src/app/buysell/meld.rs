@@ -4,7 +4,17 @@ use std::error::Error;
 use std::fmt;
 
 const MELD_API_BASE_URL: &str = "https://api-sb.meld.io/crypto/session/widget";
-const MELD_AUTH_HEADER: &str = "BASIC WePYLDhjQ9xBCsedwgRGm5:3Jg4JnemxqoBPHTbHtcMuszbhkGHQmh";
+
+// TODO: Move to .env and use in build.rs for compile-time env
+fn meld_auth_header() -> Option<String> {
+    if cfg!(debug_assertions) {
+        std::env::var("MELD_API_KEY").ok().and_then(|v| {
+            if v.is_empty() { None } else { Some(v.trim().to_string()) }
+        })
+    } else {
+        option_env!("MELD_API_KEY").map(|s| s.trim().to_string())
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MeldSessionRequest {
@@ -77,7 +87,7 @@ impl From<serde_json::Error> for MeldError {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MeldClient {
     client: reqwest::Client,
 }
@@ -135,10 +145,19 @@ impl MeldClient {
             serde_json::to_string_pretty(&request).unwrap_or_default()
         );
 
+        // Resolve Authorization header from env (.env at runtime, or compile-time env)
+        let auth = match meld_auth_header() {
+            Some(h) => h,
+            None => {
+                tracing::error!("Meld API key not configured: set MELD_API_KEY in .env or build env");
+                return Err(MeldError::Api("Meld API key not configured".to_string()));
+            }
+        };
+
         let response = self
             .client
             .post(MELD_API_BASE_URL)
-            .header("Authorization", MELD_AUTH_HEADER)
+            .header("Authorization", format!("BASIC {}", auth))
             .header("Content-Type", "application/json")
             .json(&request)
             .send()

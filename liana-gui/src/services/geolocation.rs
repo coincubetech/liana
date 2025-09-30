@@ -85,7 +85,20 @@ impl CachedGeoLocator {
     }
 
     pub async fn detect_region(&self) -> Result<(Region, String), String> {
-        // Developer override for testing
+        // Developer override for testing (preferred)
+        if let Ok(force) = std::env::var("FORCE_REGION") {
+            let f = force.to_ascii_lowercase();
+            let region = match f.as_str() {
+                "africa" => Some(Region::Africa),
+                "international" => Some(Region::International),
+                _ => None,
+            };
+            if let Some(r) = region {
+                return Ok((r, "ZZ".to_string()));
+            }
+        }
+
+        // Backward-compat: support older env name
         if let Ok(force) = std::env::var("FORCE_PROVIDER") {
             let f = force.to_ascii_lowercase();
             let region = match f.as_str() {
@@ -118,4 +131,3 @@ impl CachedGeoLocator {
         result
     }
 }
-

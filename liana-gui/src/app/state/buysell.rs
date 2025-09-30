@@ -1,7 +1,6 @@
 use iced::Task;
 use std::sync::Arc;
 
-#[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
 use crate::services::mavapay::{BankAccount, Beneficiary};
 
 use iced_webview::{
@@ -10,15 +9,8 @@ use iced_webview::{
 };
 use liana_ui::widget::Element;
 
-#[cfg(feature = "dev-meld")]
-use crate::app::buysell::{meld::MeldError, ServiceProvider};
-
-#[cfg(all(feature = "dev-onramp", not(feature = "dev-meld")))]
-use crate::app::buysell::onramper;
-
-#[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-use crate::app::view::buysell::NativePage;
-use crate::app::buysell::{onramper, meld::MeldError, ServiceProvider};
+use crate::app::buysell::{meld::MeldError, onramper, ServiceProvider};
+use crate::app::view::buysell::{BuySellFlowState, NativePage, InternationalProvider};
 
 
 use crate::{
@@ -104,11 +96,10 @@ impl State for BuySellPanel {
     ) -> Task<Message> {
         // Handle global navigation for native flow (Previous)
         if let Message::View(ViewMessage::Previous) = &message {
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            {
-                match self.native_page {
-                    NativePage::Register => self.native_page = NativePage::AccountSelect,
-                    NativePage::VerifyEmail => self.native_page = NativePage::Register,
+            if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                match state.native_page {
+                    NativePage::Register => state.native_page = NativePage::AccountSelect,
+                    NativePage::VerifyEmail => state.native_page = NativePage::Register,
                     _ => {}
                 }
             }
@@ -131,44 +122,33 @@ impl State for BuySellPanel {
             }
             BuySellMessage::CreateAccountPressed => {
                 // Navigate to registration page
-                #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-                {
-                    self.native_page = NativePage::Register;
-                }
-                #[cfg(any(feature = "dev-meld", feature = "dev-onramp"))]
-
-                {
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.native_page = NativePage::Register;
+                } else {
                     self.set_error("Create Account not implemented yet".to_string());
                 }
             }
             BuySellMessage::WalletAddressChanged(address) => {
                 self.set_wallet_address(address);
             }
-            #[cfg(feature = "dev-meld")]
-            BuySellMessage::CountryCodeChanged(code) => {
-                self.set_country_code(code);
-            }
-            #[cfg(feature = "dev-onramp")]
-            BuySellMessage::FiatCurrencyChanged(fiat) => {
-                self.set_fiat_currency(fiat);
-            }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::AccountTypeSelected(t) => {
-                self.selected_account_type = Some(t);
-            }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            BuySellMessage::GetStarted => {
-                if self.selected_account_type.is_none() {
-                    // button disabled; ignore
-                } else {
-                    // Navigate to login page (native flow)
-                    self.native_page = NativePage::Login;
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.selected_account_type = Some(t);
                 }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            BuySellMessage::GetStarted => {
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    if state.selected_account_type.is_some() {
+                        // Navigate to login page (native flow)
+                        state.native_page = NativePage::Login;
+                    }
+                }
+            }
             BuySellMessage::FirstNameChanged(v) => {
-                self.first_name.value = v;
-                self.first_name.valid = !self.first_name.value.is_empty();
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.first_name.value = v;
+                    state.first_name.valid = !state.first_name.value.is_empty();
+                }
             }
             BuySellMessage::DetectRegion => {
                 // Detection is automatically triggered by reload(); nothing to do here
@@ -176,305 +156,314 @@ impl State for BuySellPanel {
             BuySellMessage::RegionDetected(region, country) => {
                 // Do not log IP addresses. Region/country are fine.
                 tracing::info!("region = {}, country = {}", region, country);
-                self.detected_region = Some(region);
-                self.detected_country = Some(country);
-                self.error = None;
+                self.handle_region_detected(&region, country);
             }
             BuySellMessage::RegionDetectionError(_error) => {
                 // Graceful fallback: show provider selection, no blocking error
                 self.region_detection_failed = true;
+                self.flow_state = BuySellFlowState::DetectionFailed;
                 self.error = None;
             }
 
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::LastNameChanged(v) => {
-                self.last_name.value = v;
-                self.last_name.valid = !self.last_name.value.is_empty();
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.last_name.value = v;
+                    state.last_name.valid = !state.last_name.value.is_empty();
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::EmailChanged(v) => {
-                self.email.value = v;
-                self.email.valid = self.email.value.contains('@') && self.email.value.contains('.')
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.email.value = v;
+                    state.email.valid = state.email.value.contains('@') && state.email.value.contains('.')
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::Password1Changed(v) => {
-                self.password1.value = v;
-                self.password1.valid = self.is_password_valid();
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.password1.value = v;
+                    state.password1.valid = Self::is_password_valid_static(&state.password1.value);
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::Password2Changed(v) => {
-                self.password2.value = v;
-                self.password2.valid = self.password2.value == self.password1.value
-                    && !self.password2.value.is_empty();
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.password2.value = v;
+                    state.password2.valid = state.password2.value == state.password1.value
+                        && !state.password2.value.is_empty();
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::TermsToggled(b) => {
-                self.terms_accepted = b;
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.terms_accepted = b;
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::SubmitRegistration => {
-                tracing::info!("🔍 [REGISTRATION] Submit registration button clicked");
+                if let BuySellFlowState::Africa(ref state) = self.flow_state {
+                    tracing::info!("🔍 [REGISTRATION] Submit registration button clicked");
 
-                if self.is_registration_valid() {
-                    tracing::info!(
-                        "✅ [REGISTRATION] Form validation passed, submitting registration"
-                    );
-                    let client = self.registration_client.clone();
-                    let account_type = if self.selected_account_type
-                        == Some(crate::app::view::AccountType::Individual)
-                    {
-                        "personal"
+                    if Self::is_registration_valid_static(state) {
+                        tracing::info!(
+                            "✅ [REGISTRATION] Form validation passed, submitting registration"
+                        );
+                        let client = state.registration_client.clone();
+                        let account_type = if state.selected_account_type
+                            == Some(crate::app::view::AccountType::Individual)
+                        {
+                            "personal"
+                        } else {
+                            "business"
+                        }
+                        .to_string();
+
+                        let email = state.email.value.clone();
+                        let first_name = state.first_name.value.clone();
+                        let last_name = state.last_name.value.clone();
+                        let password = state.password1.value.clone();
+
+                        tracing::info!(
+                            "📤 [REGISTRATION] Making API call with account_type: {}, email: {}",
+                            account_type,
+                            email
+                        );
+
+                        return Task::perform(
+                            async move {
+                                let request = crate::services::registration::SignUpRequest {
+                                    account_type,
+                                    email,
+                                    first_name,
+                                    last_name,
+                                    auth_details: vec![crate::services::registration::AuthDetail {
+                                        provider: 1, // EmailProvider = 1
+                                        password,
+                                    }],
+                                };
+
+                                tracing::info!("🚀 [REGISTRATION] Sending request to API");
+                                let result = client.sign_up(request).await;
+                                tracing::info!(
+                                    "📥 [REGISTRATION] API response received: {:?}",
+                                    result.is_ok()
+                                );
+                                result
+                            },
+                            |result| match result {
+                                Ok(_response) => {
+                                    tracing::info!("🎉 [REGISTRATION] Registration successful!");
+                                    // Registration successful, navigate to email verification
+                                    Message::View(ViewMessage::BuySell(
+                                        BuySellMessage::RegistrationSuccess,
+                                    ))
+                                }
+                                Err(error) => {
+                                    tracing::error!(
+                                        "❌ [REGISTRATION] Registration failed: {}",
+                                        error.error
+                                    );
+                                    // Registration failed, show error
+                                    Message::View(ViewMessage::BuySell(
+                                        BuySellMessage::RegistrationError(error.error),
+                                    ))
+                                }
+                            },
+                        );
                     } else {
-                        "business"
+                        tracing::warn!(
+                            "⚠️ [REGISTRATION] Form validation failed - button should be disabled"
+                        );
+                        tracing::warn!(
+                            "   - First name: '{}' (valid: {})",
+                            state.first_name.value,
+                            !state.first_name.value.is_empty()
+                        );
+                        tracing::warn!(
+                            "   - Last name: '{}' (valid: {})",
+                            state.last_name.value,
+                            !state.last_name.value.is_empty()
+                        );
+                        tracing::warn!(
+                            "   - Email: '{}' (valid: {})",
+                            state.email.value,
+                            state.email.value.contains('@') && state.email.value.contains('.')
+                        );
+                        tracing::warn!(
+                            "   - Password length: {} (valid: {})",
+                            state.password1.value.len(),
+                            state.password1.value.len() >= 8
+                        );
+                        tracing::warn!(
+                            "   - Passwords match: {}",
+                            state.password1.value == state.password2.value
+                        );
+                        tracing::warn!("   - Terms accepted: {}", state.terms_accepted);
                     }
-                    .to_string();
-
-                    let email = self.email.value.clone();
-                    let first_name = self.first_name.value.clone();
-                    let last_name = self.last_name.value.clone();
-                    let password = self.password1.value.clone();
-
+                }
+            }
+            BuySellMessage::RegistrationSuccess => {
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    // Registration successful, navigate to email verification
+                    state.native_page = NativePage::VerifyEmail;
+                    state.email_verification_status = Some(false); // pending verification
+                    self.error = None;
+                }
+            }
+            BuySellMessage::RegistrationError(error) => {
+                self.error = Some(format!("Registration failed: {}", error));
+            }
+            BuySellMessage::CheckEmailVerificationStatus => {
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
                     tracing::info!(
-                        "📤 [REGISTRATION] Making API call with account_type: {}, email: {}",
-                        account_type,
-                        email
+                        "🔍 [EMAIL_VERIFICATION] Checking email verification status for: {}",
+                        state.email.value
                     );
+                    // Set to "checking" state
+                    state.email_verification_status = None;
+                    let client = state.registration_client.clone();
+                    let email = state.email.value.clone();
 
                     return Task::perform(
                         async move {
-                            let request = crate::services::registration::SignUpRequest {
-                                account_type,
-                                email,
-                                first_name,
-                                last_name,
-                                auth_details: vec![crate::services::registration::AuthDetail {
-                                    provider: 1, // EmailProvider = 1
-                                    password,
-                                }],
-                            };
-
-                            tracing::info!("🚀 [REGISTRATION] Sending request to API");
-                            let result = client.sign_up(request).await;
+                            tracing::info!("🚀 [EMAIL_VERIFICATION] Making API call to check status");
+                            let result = client.check_email_verification_status(&email).await;
                             tracing::info!(
-                                "📥 [REGISTRATION] API response received: {:?}",
+                                "📥 [EMAIL_VERIFICATION] API response received: {:?}",
+                                result.is_ok()
+                            );
+                            result
+                        },
+                        |result| match result {
+                            Ok(response) => {
+                                tracing::info!(
+                                    "✅ [EMAIL_VERIFICATION] Status check successful: verified={}",
+                                    response.email_verified
+                                );
+                                Message::View(ViewMessage::BuySell(
+                                    BuySellMessage::EmailVerificationStatusChecked(
+                                        response.email_verified,
+                                    ),
+                                ))
+                            }
+                            Err(error) => {
+                                tracing::error!(
+                                    "❌ [EMAIL_VERIFICATION] Status check failed: {}",
+                                    error.error
+                                );
+                                Message::View(ViewMessage::BuySell(
+                                    BuySellMessage::EmailVerificationStatusError(error.error),
+                                ))
+                            }
+                        },
+                    );
+                }
+            }
+            BuySellMessage::EmailVerificationStatusChecked(verified) => {
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.email_verification_status = Some(verified);
+                    if verified {
+                        tracing::info!(
+                            "✅ [EMAIL_VERIFICATION] Email verified, navigating to Mavapay dashboard"
+                        );
+                        state.native_page = NativePage::CoincubePay;
+                        self.error = None;
+                        // Automatically get current price when entering dashboard
+                        return Task::done(Message::View(ViewMessage::BuySell(
+                            BuySellMessage::MavapayGetPrice,
+                        )));
+                    } else {
+                        self.error = None;
+                    }
+                }
+            }
+            BuySellMessage::EmailVerificationStatusError(error) => {
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.email_verification_status = Some(false); // fallback to pending
+                    self.error = Some(format!("Error checking verification status: {}", error));
+                }
+            }
+            BuySellMessage::ResendVerificationEmail => {
+                if let BuySellFlowState::Africa(ref state) = self.flow_state {
+                    tracing::info!(
+                        "📧 [RESEND_EMAIL] Resending verification email to: {}",
+                        state.email.value
+                    );
+                    let client = state.registration_client.clone();
+                    let email = state.email.value.clone();
+
+                    return Task::perform(
+                        async move {
+                            tracing::info!("🚀 [RESEND_EMAIL] Making API call to resend email");
+                            let result = client.resend_verification_email(&email).await;
+                            tracing::info!(
+                                "📥 [RESEND_EMAIL] API response received: {:?}",
                                 result.is_ok()
                             );
                             result
                         },
                         |result| match result {
                             Ok(_response) => {
-                                tracing::info!("🎉 [REGISTRATION] Registration successful!");
-                                // Registration successful, navigate to email verification
-                                Message::View(ViewMessage::BuySell(
-                                    BuySellMessage::RegistrationSuccess,
-                                ))
+                                tracing::info!("✅ [RESEND_EMAIL] Email resent successfully");
+                                Message::View(ViewMessage::BuySell(BuySellMessage::ResendEmailSuccess))
                             }
                             Err(error) => {
                                 tracing::error!(
-                                    "❌ [REGISTRATION] Registration failed: {}",
+                                    "❌ [RESEND_EMAIL] Failed to resend email: {}",
                                     error.error
                                 );
-                                // Registration failed, show error
-                                Message::View(ViewMessage::BuySell(
-                                    BuySellMessage::RegistrationError(error.error),
-                                ))
+                                Message::View(ViewMessage::BuySell(BuySellMessage::ResendEmailError(
+                                    error.error,
+                                )))
                             }
                         },
                     );
-                } else {
-                    tracing::warn!(
-                        "⚠️ [REGISTRATION] Form validation failed - button should be disabled"
-                    );
-                    tracing::warn!(
-                        "   - First name: '{}' (valid: {})",
-                        self.first_name.value,
-                        !self.first_name.value.is_empty()
-                    );
-                    tracing::warn!(
-                        "   - Last name: '{}' (valid: {})",
-                        self.last_name.value,
-                        !self.last_name.value.is_empty()
-                    );
-                    tracing::warn!(
-                        "   - Email: '{}' (valid: {})",
-                        self.email.value,
-                        self.email.value.contains('@') && self.email.value.contains('.')
-                    );
-                    tracing::warn!(
-                        "   - Password length: {} (valid: {})",
-                        self.password1.value.len(),
-                        self.password1.value.len() >= 8
-                    );
-                    tracing::warn!(
-                        "   - Passwords match: {}",
-                        self.password1.value == self.password2.value
-                    );
-                    tracing::warn!("   - Terms accepted: {}", self.terms_accepted);
                 }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            BuySellMessage::RegistrationSuccess => {
-                // Registration successful, navigate to email verification
-                self.native_page = NativePage::VerifyEmail;
-                self.email_verification_status = Some(false); // pending verification
-                self.error = None;
-            }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            BuySellMessage::RegistrationError(error) => {
-                self.error = Some(format!("Registration failed: {}", error));
-            }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            BuySellMessage::CheckEmailVerificationStatus => {
-                tracing::info!(
-                    "🔍 [EMAIL_VERIFICATION] Checking email verification status for: {}",
-                    self.email.value
-                );
-                // Set to "checking" state
-                self.email_verification_status = None;
-                let client = self.registration_client.clone();
-                let email = self.email.value.clone();
-
-                return Task::perform(
-                    async move {
-                        tracing::info!("🚀 [EMAIL_VERIFICATION] Making API call to check status");
-                        let result = client.check_email_verification_status(&email).await;
-                        tracing::info!(
-                            "📥 [EMAIL_VERIFICATION] API response received: {:?}",
-                            result.is_ok()
-                        );
-                        result
-                    },
-                    |result| match result {
-                        Ok(response) => {
-                            tracing::info!(
-                                "✅ [EMAIL_VERIFICATION] Status check successful: verified={}",
-                                response.email_verified
-                            );
-                            Message::View(ViewMessage::BuySell(
-                                BuySellMessage::EmailVerificationStatusChecked(
-                                    response.email_verified,
-                                ),
-                            ))
-                        }
-                        Err(error) => {
-                            tracing::error!(
-                                "❌ [EMAIL_VERIFICATION] Status check failed: {}",
-                                error.error
-                            );
-                            Message::View(ViewMessage::BuySell(
-                                BuySellMessage::EmailVerificationStatusError(error.error),
-                            ))
-                        }
-                    },
-                );
-            }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            BuySellMessage::EmailVerificationStatusChecked(verified) => {
-                self.email_verification_status = Some(verified);
-                if verified {
-                    tracing::info!(
-                        "✅ [EMAIL_VERIFICATION] Email verified, navigating to Mavapay dashboard"
-                    );
-                    self.native_page = NativePage::CoincubePay;
-                    self.error = None;
-                    // Automatically get current price when entering dashboard
-                    return Task::done(Message::View(ViewMessage::BuySell(
-                        BuySellMessage::MavapayGetPrice,
-                    )));
-                } else {
-                    self.error = None;
-                }
-            }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            BuySellMessage::EmailVerificationStatusError(error) => {
-                self.email_verification_status = Some(false); // fallback to pending
-                self.error = Some(format!("Error checking verification status: {}", error));
-            }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            BuySellMessage::ResendVerificationEmail => {
-                tracing::info!(
-                    "📧 [RESEND_EMAIL] Resending verification email to: {}",
-                    self.email.value
-                );
-                let client = self.registration_client.clone();
-                let email = self.email.value.clone();
-
-                return Task::perform(
-                    async move {
-                        tracing::info!("🚀 [RESEND_EMAIL] Making API call to resend email");
-                        let result = client.resend_verification_email(&email).await;
-                        tracing::info!(
-                            "📥 [RESEND_EMAIL] API response received: {:?}",
-                            result.is_ok()
-                        );
-                        result
-                    },
-                    |result| match result {
-                        Ok(_response) => {
-                            tracing::info!("✅ [RESEND_EMAIL] Email resent successfully");
-                            Message::View(ViewMessage::BuySell(BuySellMessage::ResendEmailSuccess))
-                        }
-                        Err(error) => {
-                            tracing::error!(
-                                "❌ [RESEND_EMAIL] Failed to resend email: {}",
-                                error.error
-                            );
-                            Message::View(ViewMessage::BuySell(BuySellMessage::ResendEmailError(
-                                error.error,
-                            )))
-                        }
-                    },
-                );
-            }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::ResendEmailSuccess => {
-                self.email_verification_status = Some(false); // back to pending
-                self.error = Some("Verification email resent successfully!".to_string());
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.email_verification_status = Some(false); // back to pending
+                    self.error = Some("Verification email resent successfully!".to_string());
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::ResendEmailError(error) => {
                 self.error = Some(format!("Error resending email: {}", error));
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::LoginSuccess(response) => {
-                tracing::info!("✅ [LOGIN] Login successful, checking email verification status");
-                self.error = None;
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    tracing::info!("✅ [LOGIN] Login successful, checking email verification status");
+                    self.error = None;
 
-                // Check if 2FA is required
-                if response.requires_two_factor {
-                    tracing::info!("⚠️ [LOGIN] 2FA required but not implemented yet");
-                    self.set_error(
-                        "Two-factor authentication required but not yet supported.".to_string(),
-                    );
-                    return Task::none();
-                }
-
-                // Check if we have user data and token
-                if let (Some(user), Some(_token)) = (&response.user, &response.token) {
-                    // Check if email is verified and route accordingly
-                    if user.email_verified {
-                        tracing::info!(
-                            "✅ [LOGIN] Email verified, navigating to Mavapay dashboard"
+                    // Check if 2FA is required
+                    if response.requires_two_factor {
+                        tracing::info!("⚠️ [LOGIN] 2FA required but not implemented yet");
+                        self.set_error(
+                            "Two-factor authentication required but not yet supported.".to_string(),
                         );
-                        self.native_page = NativePage::CoincubePay;
-                        // Automatically get current price when entering dashboard
-                        return Task::done(Message::View(ViewMessage::BuySell(
-                            BuySellMessage::MavapayGetPrice,
-                        )));
-                    } else {
-                        tracing::info!(
-                            "⚠️ [LOGIN] Email not verified, redirecting to verification page"
-                        );
-                        // Store the email for verification
-                        self.email.value = user.email.clone();
-                        self.native_page = NativePage::VerifyEmail;
+                        return Task::none();
                     }
-                } else {
-                    tracing::error!("❌ [LOGIN] Login response missing user data or token");
-                    self.set_error("Login failed: Invalid response from server".to_string());
+
+                    // Check if we have user data and token
+                    if let (Some(user), Some(_token)) = (&response.user, &response.token) {
+                        // Check if email is verified and route accordingly
+                        if user.email_verified {
+                            tracing::info!(
+                                "✅ [LOGIN] Email verified, navigating to Mavapay dashboard"
+                            );
+                            state.native_page = NativePage::CoincubePay;
+                            // Automatically get current price when entering dashboard
+                            return Task::done(Message::View(ViewMessage::BuySell(
+                                BuySellMessage::MavapayGetPrice,
+                            )));
+                        } else {
+                            tracing::info!(
+                                "⚠️ [LOGIN] Email not verified, redirecting to verification page"
+                            );
+                            // Store the email for verification
+                            state.email.value = user.email.clone();
+                            state.native_page = NativePage::VerifyEmail;
+                        }
+                    } else {
+                        tracing::error!("❌ [LOGIN] Login response missing user data or token");
+                        self.set_error("Login failed: Invalid response from server".to_string());
+                    }
                 }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::LoginError(err) => {
                 tracing::error!("❌ [LOGIN] Login failed: {}", err);
                 self.set_error(format!("Login failed: {}", err));
@@ -483,299 +472,215 @@ impl State for BuySellPanel {
             BuySellMessage::SourceAmountChanged(amount) => {
                 self.set_source_amount(amount);
             }
+            BuySellMessage::CountryCodeChanged(_)
+            | BuySellMessage::FiatCurrencyChanged(_) => {
+                // Legacy inputs retained for backward compatibility; runtime flow now uses
+                // geolocation-derived country and provider defaults. No-op in new architecture.
+            }
 
-            // Mavapay message handlers
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+            // International provider handlers
             BuySellMessage::OpenOnramper => {
-                // Build Onramper widget URL and open in embedded webview
-                let currency = "USD".to_string();
-                let amount = if self.source_amount.value.is_empty() {
-                    "50".to_string()
-                } else {
-                    self.source_amount.value.clone()
-                };
-                let wallet = self.wallet_address.value.clone();
-                if let Some(url) = onramper::create_widget_url(&currency, &amount, &wallet) {
-                    return Task::done(Message::View(ViewMessage::BuySell(
-                        BuySellMessage::WebviewOpenUrl(url),
-                    )));
-                } else {
-                    self.set_error("Onramper API key not configured".to_string());
+                if let BuySellFlowState::International(ref mut state) = self.flow_state {
+                    state.selected_provider = Some(InternationalProvider::Onramper);
+                    // Build Onramper widget URL and open in embedded webview
+                    let currency = "USD".to_string();
+                    let amount = if self.source_amount.value.is_empty() {
+                        "50".to_string()
+                    } else {
+                        self.source_amount.value.clone()
+                    };
+                    let wallet = self.wallet_address.value.clone();
+                    if let Some(url) = onramper::create_widget_url(&currency, &amount, &wallet) {
+                        return Task::done(Message::View(ViewMessage::BuySell(
+                            BuySellMessage::WebviewOpenUrl(url),
+                        )));
+                    } else {
+                        self.set_error("Onramper API key not configured".to_string());
+                    }
                 }
             }
             BuySellMessage::OpenMeld => {
-                // Create Meld widget session via API and open in embedded webview
-                let wallet_address = self.wallet_address.value.clone();
-                let country_code = self
-                    .detected_country
-                    .clone()
-                    .unwrap_or_else(|| "US".to_string());
-                let source_amount = if self.source_amount.value.is_empty() {
-                    "50".to_string()
-                } else {
-                    self.source_amount.value.clone()
-                };
-                let network = self.network;
-                let client = self.meld_client.clone();
-                return Task::perform(
-                    async move {
-                        client
-                            .create_widget_session(
-                                wallet_address,
-                                country_code,
-                                source_amount,
-                                ServiceProvider::Guardarian,
-                                network,
-                            )
-                            .await
-                            .map(|resp| resp.widget_url)
-                            .map_err(|e| format!("{}", e))
-                    },
-                    |result| match result {
-                        Ok(widget_url) => Message::View(ViewMessage::BuySell(
-                            BuySellMessage::WebviewOpenUrl(widget_url),
-                        )),
-                        Err(error) => Message::View(ViewMessage::BuySell(
-                            BuySellMessage::SessionError(error),
-                        )),
-                    },
-                );
+                if let BuySellFlowState::International(ref mut state) = self.flow_state {
+                    state.selected_provider = Some(InternationalProvider::Meld);
+                    // Create Meld widget session via API and open in embedded webview
+                    let wallet_address = self.wallet_address.value.clone();
+                    let country_code = self
+                        .detected_country
+                        .clone()
+                        .unwrap_or_else(|| "US".to_string());
+                    let source_amount = if self.source_amount.value.is_empty() {
+                        "50".to_string()
+                    } else {
+                        self.source_amount.value.clone()
+                    };
+                    let network = self.network;
+                    let client = state.meld_client.clone();
+                    return Task::perform(
+                        async move {
+                            client
+                                .create_widget_session(
+                                    wallet_address,
+                                    country_code,
+                                    source_amount,
+                                    ServiceProvider::Guardarian,
+                                    network,
+                                )
+                                .await
+                                .map(|resp| resp.widget_url)
+                                .map_err(|e| format!("{}", e))
+                        },
+                        |result| match result {
+                            Ok(widget_url) => Message::View(ViewMessage::BuySell(
+                                BuySellMessage::WebviewOpenUrl(widget_url),
+                            )),
+                            Err(error) => Message::View(ViewMessage::BuySell(
+                                BuySellMessage::SessionError(error),
+                            )),
+                        },
+                    );
+                }
             }
 
             BuySellMessage::MavapayDashboard => {
-                self.native_page = NativePage::CoincubePay;
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.native_page = NativePage::CoincubePay;
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayAmountChanged(amount) => {
-                self.mavapay_amount.value = amount;
-                self.mavapay_amount.valid = !self.mavapay_amount.value.is_empty()
-                    && self.mavapay_amount.value.parse::<u64>().is_ok();
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.mavapay_amount.value = amount;
+                    state.mavapay_amount.valid = !state.mavapay_amount.value.is_empty()
+                        && state.mavapay_amount.value.parse::<u64>().is_ok();
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapaySourceCurrencyChanged(currency) => {
-                self.mavapay_source_currency.value = currency;
-                self.mavapay_source_currency.valid = !self.mavapay_source_currency.value.is_empty();
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.mavapay_source_currency.value = currency;
+                    state.mavapay_source_currency.valid = !state.mavapay_source_currency.value.is_empty();
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayTargetCurrencyChanged(currency) => {
-                self.mavapay_target_currency.value = currency;
-                self.mavapay_target_currency.valid = !self.mavapay_target_currency.value.is_empty();
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.mavapay_target_currency.value = currency;
+                    state.mavapay_target_currency.valid = !state.mavapay_target_currency.value.is_empty();
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayBankAccountNumberChanged(account) => {
-                self.mavapay_bank_account_number.value = account;
-                self.mavapay_bank_account_number.valid =
-                    !self.mavapay_bank_account_number.value.is_empty();
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.mavapay_bank_account_number.value = account;
+                    state.mavapay_bank_account_number.valid =
+                        !state.mavapay_bank_account_number.value.is_empty();
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayBankAccountNameChanged(name) => {
-                self.mavapay_bank_account_name.value = name;
-                self.mavapay_bank_account_name.valid =
-                    !self.mavapay_bank_account_name.value.is_empty();
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.mavapay_bank_account_name.value = name;
+                    state.mavapay_bank_account_name.valid =
+                        !state.mavapay_bank_account_name.value.is_empty();
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayBankCodeChanged(code) => {
-                self.mavapay_bank_code.value = code;
-                self.mavapay_bank_code.valid = !self.mavapay_bank_code.value.is_empty();
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.mavapay_bank_code.value = code;
+                    state.mavapay_bank_code.valid = !state.mavapay_bank_code.value.is_empty();
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayBankNameChanged(name) => {
-                self.mavapay_bank_name.value = name;
-                self.mavapay_bank_name.valid = !self.mavapay_bank_name.value.is_empty();
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.mavapay_bank_name.value = name;
+                    state.mavapay_bank_name.valid = !state.mavapay_bank_name.value.is_empty();
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayCreateQuote => {
                 return self.handle_mavapay_create_quote();
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayQuoteCreated(quote) => {
-                self.mavapay_current_quote = Some(quote);
-                self.error = None;
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.mavapay_current_quote = Some(quote);
+                    self.error = None;
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayQuoteError(error) => {
                 self.error = Some(format!("Quote error: {}", error));
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayConfirmQuote => {
                 // TODO: Implement quote confirmation
                 self.error = Some("Quote confirmation not yet implemented".to_string());
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayGetPrice => {
                 return self.handle_mavapay_get_price();
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayPriceReceived(price) => {
-                self.mavapay_current_price = Some(price);
-                self.error = None;
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.mavapay_current_price = Some(price);
+                    self.error = None;
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayPriceError(error) => {
                 self.error = Some(format!("Price error: {}", error));
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayGetTransactions => {
                 return self.handle_mavapay_get_transactions();
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayTransactionsReceived(transactions) => {
-                self.mavapay_transactions = transactions;
-                self.error = None;
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.mavapay_transactions = transactions;
+                    self.error = None;
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayTransactionsError(error) => {
                 self.error = Some(format!("Transactions error: {}", error));
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayConfirmPayment(quote_id) => {
                 return self.handle_mavapay_confirm_payment(quote_id);
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayPaymentConfirmed(status) => {
-                self.mavapay_payment_status = Some(status);
-                self.error = None;
-                // Start polling for status updates
-                let quote_id = self
-                    .mavapay_payment_status
-                    .as_ref()
-                    .unwrap()
-                    .quote_id
-                    .clone();
-                return Task::done(Message::View(ViewMessage::BuySell(
-                    BuySellMessage::MavapayStartPolling(quote_id),
-                )));
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.mavapay_payment_status = Some(status);
+                    self.error = None;
+                    // Start polling for status updates
+                    let quote_id = state
+                        .mavapay_payment_status
+                        .as_ref()
+                        .unwrap()
+                        .quote_id
+                        .clone();
+                    return Task::done(Message::View(ViewMessage::BuySell(
+                        BuySellMessage::MavapayStartPolling(quote_id),
+                    )));
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayPaymentConfirmationError(error) => {
                 self.error = Some(format!("Payment confirmation error: {}", error));
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayCheckPaymentStatus(quote_id) => {
                 return self.handle_mavapay_check_payment_status(quote_id);
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayPaymentStatusUpdated(status) => {
-                self.mavapay_payment_status = Some(status);
-                self.error = None;
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.mavapay_payment_status = Some(status);
+                    self.error = None;
+                }
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayPaymentStatusError(error) => {
                 self.error = Some(format!("Payment status error: {}", error));
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayStartPolling(quote_id) => {
                 return self.handle_mavapay_start_polling(quote_id);
             }
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
             BuySellMessage::MavapayStopPolling => {
-                self.mavapay_polling_active = false;
-            }
-
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            BuySellMessage::CreateSession => {
-                // No providers in default build; ignore or show error
-                self.set_error("No provider configured in this build".into());
-            }
-
-            #[cfg(all(feature = "dev-onramp", not(feature = "dev-meld")))]
-            BuySellMessage::CreateSession => {
-                if self.is_form_valid() {
-                    let Some(onramper_url) = onramper::create_widget_url(
-                        &self.fiat_currency.value,
-                        &self.source_amount.value,
-                        &self.wallet_address.value,
-                    ) else {
-                        self.error = Some("Onramper API key not set as an environment variable (ONRAMPER_API_KEY) at compile time".to_string());
-                        return Task::none();
-                    };
-
-                    tracing::info!(
-                        "🚀 [BUYSELL] Creating new onramper widget session: {}",
-                        &onramper_url
-                    );
-
-                    let open_webview = Message::View(ViewMessage::BuySell(
-                        BuySellMessage::WebviewOpenUrl(onramper_url),
-                    ));
-
-                    return Task::done(open_webview);
-                } else {
-                    tracing::warn!("⚠️ [BUYSELL] Cannot create session - form validation failed");
+                if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+                    state.mavapay_polling_active = false;
                 }
             }
 
-            #[cfg(feature = "dev-meld")]
             BuySellMessage::CreateSession => {
-                if self.is_form_valid() {
-                    tracing::info!(
-                        "🚀 [BUYSELL] Creating new session - clearing any existing session data"
-                    );
-
-                    // init session
-                    let wallet_address = self.wallet_address.value.clone();
-                    let country_code = self.country_code.value.clone();
-                    let source_amount = self.source_amount.value.clone();
-
-                    tracing::info!(
-                        "🚀 [BUYSELL] Making fresh API call with: address={}, country={}, amount={}",
-                        wallet_address,
-                        country_code,
-                        source_amount
-                    );
-
-                    return Task::perform(
-                        {
-                            // TODO: allow users to select source provider, in a drop down
-                            let provider = ServiceProvider::Transak;
-                            let network = self.network;
-                            let client = self.meld_client.clone();
-
-                            async move {
-                                match client
-                                    .create_widget_session(
-                                        wallet_address,
-                                        country_code,
-                                        source_amount,
-                                        provider,
-                                        network,
-                                    )
-                                    .await
-                                {
-                                    Ok(response) => Ok(response.widget_url),
-                                    Err(MeldError::Network(e)) => {
-                                        Err(format!("Network error: {}", e))
-                                    }
-                                    Err(MeldError::Serialization(e)) => {
-                                        Err(format!("Data error: {}", e))
-                                    }
-                                    Err(MeldError::Api(e)) => Err(format!("API error: {}", e)),
-                                }
-                            }
-                        },
-                        |result| match result {
-                            Ok(widget_url) => {
-                                tracing::info!(
-                                    "🌐 [BUYSELL] Meld session created with URL: {}",
-                                    widget_url
-                                );
-
-                                Message::View(ViewMessage::BuySell(BuySellMessage::WebviewOpenUrl(
-                                    widget_url,
-                                )))
-                            }
-                            Err(error) => {
-                                tracing::error!("❌ [MELD] Session creation failed: {}", error);
-                                Message::View(ViewMessage::BuySell(BuySellMessage::SessionError(
-                                    error,
-                                )))
-                            }
-                        },
-                    );
-                } else {
-                    tracing::warn!("⚠️ [BUYSELL] Cannot create session - form validation failed");
-                }
+                // Legacy handler - now use OpenMeld/OpenOnramper instead
+                self.set_error("Please select a provider (Meld or Onramper)".into());
             }
+
+            // Legacy Meld session handler removed after runtime flow-state migration
+            // BuySellMessage::_LegacyMeldSession => { /* removed */ }
             BuySellMessage::SessionError(error) => {
                 self.set_error(error);
             }
@@ -861,65 +766,71 @@ impl BuySellPanel {
             return Task::none();
         }
 
-        self.error = None;
-        tracing::info!(
-            "🔍 [LOGIN] Attempting login for user: {}",
-            self.login_username.value
-        );
+        if let BuySellFlowState::Africa(ref state) = self.flow_state {
+            self.error = None;
+            tracing::info!(
+                "🔍 [LOGIN] Attempting login for user: {}",
+                state.login_username.value
+            );
 
-        let client = self.registration_client.clone();
-        let email = self.login_username.value.clone();
-        let password = self.login_password.value.clone();
+            let client = state.registration_client.clone();
+            let email = state.login_username.value.clone();
+            let password = state.login_password.value.clone();
 
-        Task::perform(
-            async move {
-                match client.login(&email, &password).await {
-                    Ok(response) => {
-                        tracing::info!("✅ [LOGIN] Login successful for user: {}", email);
-                        Message::View(ViewMessage::BuySell(BuySellMessage::LoginSuccess(response)))
+            return Task::perform(
+                async move {
+                    match client.login(&email, &password).await {
+                        Ok(response) => {
+                            tracing::info!("✅ [LOGIN] Login successful for user: {}", email);
+                            Message::View(ViewMessage::BuySell(BuySellMessage::LoginSuccess(response)))
+                        }
+                        Err(e) => {
+                            tracing::error!("❌ [LOGIN] Login failed for user {}: {}", email, e);
+                            Message::View(ViewMessage::BuySell(BuySellMessage::LoginError(
+                                e.to_string(),
+                            )))
+                        }
                     }
-                    Err(e) => {
-                        tracing::error!("❌ [LOGIN] Login failed for user {}: {}", email, e);
-                        Message::View(ViewMessage::BuySell(BuySellMessage::LoginError(
-                            e.to_string(),
-                        )))
-                    }
-                }
-            },
-            |msg| msg,
-        )
+                },
+                |msg| msg,
+            );
+        }
+        Task::none()
     }
 
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
     fn handle_mavapay_create_quote(&self) -> Task<Message> {
         use crate::services::mavapay::{Currency, PaymentMethod, QuoteRequest};
 
+        let Some(state) = self.africa_state() else {
+            return Task::none();
+        };
+
         // Validate required bank account fields
-        if self.mavapay_bank_account_number.value.is_empty() {
+        if state.mavapay_bank_account_number.value.is_empty() {
             return Task::done(Message::View(ViewMessage::BuySell(
                 BuySellMessage::MavapayQuoteError("Bank account number is required".to_string()),
             )));
         }
 
-        if self.mavapay_bank_account_name.value.is_empty() {
+        if state.mavapay_bank_account_name.value.is_empty() {
             return Task::done(Message::View(ViewMessage::BuySell(
                 BuySellMessage::MavapayQuoteError("Bank account name is required".to_string()),
             )));
         }
 
-        if self.mavapay_bank_code.value.is_empty() {
+        if state.mavapay_bank_code.value.is_empty() {
             return Task::done(Message::View(ViewMessage::BuySell(
                 BuySellMessage::MavapayQuoteError("Bank code is required".to_string()),
             )));
         }
 
-        if self.mavapay_bank_name.value.is_empty() {
+        if state.mavapay_bank_name.value.is_empty() {
             return Task::done(Message::View(ViewMessage::BuySell(
                 BuySellMessage::MavapayQuoteError("Bank name is required".to_string()),
             )));
         }
 
-        let amount = match self.mavapay_amount.value.parse::<u64>() {
+        let amount = match state.mavapay_amount.value.parse::<u64>() {
             Ok(amt) => amt,
             Err(_) => {
                 return Task::done(Message::View(ViewMessage::BuySell(
@@ -928,7 +839,7 @@ impl BuySellPanel {
             }
         };
 
-        let source_currency = match self.mavapay_source_currency.value.as_str() {
+        let source_currency = match state.mavapay_source_currency.value.as_str() {
             "BTCSAT" => Currency::BitcoinSatoshi,
             "NGNKOBO" => Currency::NigerianNairaKobo,
             "ZARCENT" => Currency::SouthAfricanRandCent,
@@ -940,7 +851,7 @@ impl BuySellPanel {
             }
         };
 
-        let target_currency = match self.mavapay_target_currency.value.as_str() {
+        let target_currency = match state.mavapay_target_currency.value.as_str() {
             "BTCSAT" => Currency::BitcoinSatoshi,
             "NGNKOBO" => Currency::NigerianNairaKobo,
             "ZARCENT" => Currency::SouthAfricanRandCent,
@@ -961,14 +872,14 @@ impl BuySellPanel {
             autopayout: true,
             customer_internal_fee: "0".to_string(),
             beneficiary: Beneficiary::Bank(BankAccount {
-                account_number: self.mavapay_bank_account_number.value.clone(),
-                account_name: self.mavapay_bank_account_name.value.clone(),
-                bank_code: self.mavapay_bank_code.value.clone(),
-                bank_name: self.mavapay_bank_name.value.clone(),
+                account_number: state.mavapay_bank_account_number.value.clone(),
+                account_name: state.mavapay_bank_account_name.value.clone(),
+                bank_code: state.mavapay_bank_code.value.clone(),
+                bank_name: state.mavapay_bank_name.value.clone(),
             }),
         };
 
-        let client = self.mavapay_client.clone();
+        let client = state.mavapay_client.clone();
         Task::perform(
             async move { client.create_quote(request).await },
             |result| match result {
@@ -982,9 +893,11 @@ impl BuySellPanel {
         )
     }
 
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
     fn handle_mavapay_get_price(&self) -> Task<Message> {
-        let client = self.mavapay_client.clone();
+        let Some(state) = self.africa_state() else {
+            return Task::none();
+        };
+        let client = state.mavapay_client.clone();
         Task::perform(
             async move {
                 client.get_price("NGN").await // Default to Nigerian Naira
@@ -1000,9 +913,11 @@ impl BuySellPanel {
         )
     }
 
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
     fn handle_mavapay_get_transactions(&self) -> Task<Message> {
-        let client = self.mavapay_client.clone();
+        let Some(state) = self.africa_state() else {
+            return Task::none();
+        };
+        let client = state.mavapay_client.clone();
         Task::perform(
             async move {
                 client.get_transactions(Some(1), Some(10), None).await // Get first 10 transactions
@@ -1018,9 +933,11 @@ impl BuySellPanel {
         )
     }
 
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
     fn handle_mavapay_confirm_payment(&self, quote_id: String) -> Task<Message> {
-        let client = self.mavapay_client.clone();
+        let Some(state) = self.africa_state() else {
+            return Task::none();
+        };
+        let client = state.mavapay_client.clone();
         Task::perform(
             async move { client.confirm_quote(quote_id).await },
             |result| match result {
@@ -1034,9 +951,11 @@ impl BuySellPanel {
         )
     }
 
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
     fn handle_mavapay_check_payment_status(&self, quote_id: String) -> Task<Message> {
-        let client = self.mavapay_client.clone();
+        let Some(state) = self.africa_state() else {
+            return Task::none();
+        };
+        let client = state.mavapay_client.clone();
         Task::perform(
             async move { client.get_payment_status(&quote_id).await },
             |result| match result {
@@ -1050,9 +969,11 @@ impl BuySellPanel {
         )
     }
 
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
     fn handle_mavapay_start_polling(&self, quote_id: String) -> Task<Message> {
-        let client = self.mavapay_client.clone();
+        let Some(state) = self.africa_state() else {
+            return Task::none();
+        };
+        let client = state.mavapay_client.clone();
         Task::perform(
             async move {
                 // Poll every 5 seconds for up to 20 attempts (100 seconds total)
@@ -1067,5 +988,20 @@ impl BuySellPanel {
                 )),
             },
         )
+    }
+
+    // Static helper methods for validation
+    fn is_password_valid_static(password: &str) -> bool {
+        password.len() >= 8
+    }
+
+    fn is_registration_valid_static(state: &crate::app::view::buysell::AfricaFlowState) -> bool {
+        !state.first_name.value.is_empty()
+            && !state.last_name.value.is_empty()
+            && state.email.value.contains('@')
+            && state.email.value.contains('.')
+            && Self::is_password_valid_static(&state.password1.value)
+            && state.password1.value == state.password2.value
+            && state.terms_accepted
     }
 }

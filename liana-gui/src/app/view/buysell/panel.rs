@@ -1,8 +1,5 @@
 #![allow(unused_imports)]
 
-#[cfg(all(feature = "dev-meld", feature = "dev-onramp"))]
-compile_error!("`dev-meld` and `dev-onramp` should be exclusive");
-
 use iced::{
     widget::{container, Space},
     Alignment, Length,
@@ -18,108 +15,28 @@ use liana_ui::{
     widget::*,
 };
 
-use crate::app::buysell::meld::MeldClient;
 use crate::app::view::{BuySellMessage, Message as ViewMessage};
+use super::flow_state::{BuySellFlowState, AfricaFlowState, InternationalFlowState, NativePage};
 
 pub struct BuySellPanel {
+    // Common fields (always present)
     pub wallet_address: form::Value<String>,
-    #[cfg(feature = "dev-meld")]
-    pub country_code: form::Value<String>,
-    #[cfg(feature = "dev-onramp")]
-    pub fiat_currency: form::Value<String>,
     pub source_amount: form::Value<String>,
-
     pub error: Option<String>,
     pub network: Network,
-
 
     // Geolocation detection state
     pub detected_region: Option<String>,
     pub detected_country: Option<String>,
     pub region_detection_failed: bool,
 
-    pub meld_client: MeldClient,
-
-    // Ultralight webview component for Meld widget integration with performance optimizations
+    // Webview (used by international flow)
     pub webview: Option<WebView<Ultralight, crate::app::state::buysell::WebviewMessage>>,
-
-    // Current webview page url
     pub session_url: Option<String>,
-
-    // Current active webview "page": view_id
     pub active_page: Option<iced_webview::ViewId>,
 
-    // Native login fields
-    pub login_username: form::Value<String>,
-    pub login_password: form::Value<String>,
-
-    // API client for registration calls
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub registration_client: crate::services::registration::RegistrationClient,
-
-    // Mavapay API client
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub mavapay_client: crate::services::mavapay::MavapayClient,
-
-    // Default build: account type selection state
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub selected_account_type: Option<crate::app::view::message::AccountType>,
-
-    // Native flow current page
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub native_page: NativePage,
-
-    // Registration fields (native flow)
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub first_name: form::Value<String>,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub last_name: form::Value<String>,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub email: form::Value<String>,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub password1: form::Value<String>,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub password2: form::Value<String>,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub terms_accepted: bool,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub email_verification_status: Option<bool>, // None = checking, Some(true) = verified, Some(false) = pending
-
-    // Mavapay form fields
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub mavapay_amount: form::Value<String>,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub mavapay_source_currency: form::Value<String>,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub mavapay_target_currency: form::Value<String>,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub mavapay_bank_account_number: form::Value<String>,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub mavapay_bank_account_name: form::Value<String>,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub mavapay_bank_code: form::Value<String>,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub mavapay_bank_name: form::Value<String>,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub mavapay_current_quote: Option<crate::services::mavapay::QuoteResponse>,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub mavapay_current_price: Option<crate::services::mavapay::PriceResponse>,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub mavapay_transactions: Vec<crate::services::mavapay::Transaction>,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub mavapay_payment_status: Option<crate::services::mavapay::PaymentStatusResponse>,
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    pub mavapay_polling_active: bool,
-}
-
-#[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NativePage {
-    AccountSelect,
-    Login,
-    Register,
-    VerifyEmail,
-    CoincubePay,
+    // Runtime state - determines which flow is active
+    pub flow_state: BuySellFlowState,
 }
 
 impl BuySellPanel {
@@ -130,117 +47,67 @@ impl BuySellPanel {
                 warning: None,
                 valid: true,
             },
-            #[cfg(feature = "dev-meld")]
-            country_code: form::Value {
-                value: "US".to_string(),
-                warning: None,
-                valid: true,
-            },
-            #[cfg(feature = "dev-onramp")]
-            fiat_currency: form::Value {
-                value: "USD".to_string(),
-                warning: None,
-                valid: true,
-            },
             source_amount: form::Value {
                 value: "60".to_string(),
                 warning: None,
                 valid: true,
             },
-
-            meld_client: MeldClient::new(),
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            selected_account_type: None,
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            native_page: NativePage::AccountSelect,
-
             error: None,
             network,
-
-            webview: None,
-            session_url: None,
-            active_page: None,
-
-            // Geolocation defaults
             detected_region: None,
             detected_country: None,
             region_detection_failed: false,
+            webview: None,
+            session_url: None,
+            active_page: None,
+            // Start in detecting state
+            flow_state: BuySellFlowState::DetectingRegion,
+        }
+    }
 
-            login_username: form::Value {
-                value: String::new(),
-                warning: None,
-                valid: false,
-            },
-            login_password: form::Value {
-                value: String::new(),
-                warning: None,
-                valid: false,
-            },
+    /// Handle geolocation result and transition to appropriate flow state
+    pub fn handle_region_detected(&mut self, region: &str, country: String) {
+        self.detected_region = Some(region.to_string());
+        self.detected_country = Some(country);
+        self.error = None;
 
-            // Native registration defaults
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            first_name: form::Value::default(),
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            last_name: form::Value::default(),
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            email: form::Value::default(),
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            password1: form::Value::default(),
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            password2: form::Value::default(),
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            terms_accepted: false,
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            email_verification_status: None,
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            registration_client: crate::services::registration::RegistrationClient::new(
-                "https://dev-api.coincube.io/api/v1".to_string(),
-            ),
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            mavapay_client: crate::services::mavapay::MavapayClient::new(
-                std::env::var("MAVAPAY_API_KEY").unwrap_or_else(|_| {
-                    tracing::warn!("MAVAPAY_API_KEY environment variable not set");
-                    String::new()
-                }),
-            ),
+        self.flow_state = match region {
+            "africa" => BuySellFlowState::Africa(AfricaFlowState::new()),
+            "international" => BuySellFlowState::International(InternationalFlowState::new()),
+            _ => BuySellFlowState::DetectionFailed,
+        };
+    }
 
-            // Mavapay form defaults
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            mavapay_amount: form::Value {
-                value: "100000".to_string(), // 100,000 sats default
-                warning: None,
-                valid: true,
-            },
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            mavapay_source_currency: form::Value {
-                value: "BTCSAT".to_string(),
-                warning: None,
-                valid: true,
-            },
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            mavapay_target_currency: form::Value {
-                value: "NGNKOBO".to_string(),
-                warning: None,
-                valid: true,
-            },
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            mavapay_bank_account_number: form::Value::default(),
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            mavapay_bank_account_name: form::Value::default(),
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            mavapay_bank_code: form::Value::default(),
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            mavapay_bank_name: form::Value::default(),
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            mavapay_current_quote: None,
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            mavapay_current_price: None,
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            mavapay_transactions: Vec::new(),
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            mavapay_payment_status: None,
-            #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-            mavapay_polling_active: false,
+    // Helper methods to access Africa flow state fields (for backward compatibility during migration)
+    pub fn africa_state(&self) -> Option<&AfricaFlowState> {
+        if let BuySellFlowState::Africa(ref state) = self.flow_state {
+            Some(state)
+        } else {
+            None
+        }
+    }
+
+    pub fn africa_state_mut(&mut self) -> Option<&mut AfricaFlowState> {
+        if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+            Some(state)
+        } else {
+            None
+        }
+    }
+
+    pub fn international_state(&self) -> Option<&InternationalFlowState> {
+        if let BuySellFlowState::International(ref state) = self.flow_state {
+            Some(state)
+        } else {
+            None
+        }
+    }
+
+    pub fn international_state_mut(&mut self) -> Option<&mut InternationalFlowState> {
+        if let BuySellFlowState::International(ref mut state) = self.flow_state {
+            Some(state)
+        } else {
+            None
         }
     }
 
@@ -282,17 +149,25 @@ impl BuySellPanel {
     }
 
     pub fn set_login_username(&mut self, v: String) {
-        self.login_username.value = v;
-        self.login_username.valid = !self.login_username.value.is_empty();
+        if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+            state.login_username.value = v;
+            state.login_username.valid = !state.login_username.value.is_empty();
+        }
     }
 
     pub fn set_login_password(&mut self, v: String) {
-        self.login_password.value = v;
-        self.login_password.valid = !self.login_password.value.is_empty();
+        if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+            state.login_password.value = v;
+            state.login_password.valid = !state.login_password.value.is_empty();
+        }
     }
 
     pub fn is_login_form_valid(&self) -> bool {
-        self.login_username.valid && self.login_password.valid
+        if let BuySellFlowState::Africa(ref state) = self.flow_state {
+            state.login_username.valid && state.login_password.valid
+        } else {
+            false
+        }
     }
 
     fn update_wallet_address_warning(&mut self) {
@@ -309,19 +184,6 @@ impl BuySellPanel {
         };
     }
 
-    #[cfg(feature = "dev-meld")]
-    pub fn set_country_code(&mut self, code: String) {
-        self.country_code.value = code;
-        self.country_code.valid = !self.country_code.value.is_empty();
-    }
-
-    #[cfg(feature = "dev-onramp")]
-    pub fn set_fiat_currency(&mut self, code: String) {
-        self.fiat_currency.value = code;
-        // TODO: Check if currency is valid using static array
-        self.fiat_currency.valid = true;
-    }
-
     pub fn set_source_amount(&mut self, amount: String) {
         self.source_amount.value = amount;
         self.source_amount.valid =
@@ -329,18 +191,7 @@ impl BuySellPanel {
     }
 
     pub fn is_form_valid(&self) -> bool {
-        #[cfg(feature = "dev-meld")]
-        #[allow(unused_variables)]
-        let locale_check = self.country_code.valid && !self.country_code.value.is_empty();
-
-        #[cfg(feature = "dev-onramp")]
-        let locale_check = self.fiat_currency.valid && !self.fiat_currency.value.is_empty();
-
-        #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-        let locale_check = true;
-
         self.wallet_address.valid
-            && locale_check
             && self.source_amount.valid
             && !self.wallet_address.value.is_empty()
             && !self.source_amount.value.is_empty()
@@ -447,21 +298,34 @@ impl BuySellPanel {
         .center_x(Length::Fill)
     }
 
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
     fn form_view<'a>(&'a self) -> Column<'a, ViewMessage> {
-        if self.detected_region.as_deref() == Some("international") || self.region_detection_failed {
-            return self.provider_selection_form();
-        }
-        match self.native_page {
-            NativePage::AccountSelect => self.native_account_select_form(),
-            NativePage::Login => self.native_login_form(),
-            NativePage::Register => self.native_register_form(),
-            NativePage::VerifyEmail => self.native_verify_email_form(),
-            NativePage::CoincubePay => self.coincube_pay_form(),
+        match &self.flow_state {
+            BuySellFlowState::DetectingRegion => self.render_loading(),
+            BuySellFlowState::Africa(state) => self.render_africa_flow(state),
+            BuySellFlowState::International(_state) => self.provider_selection_form(),
+            BuySellFlowState::DetectionFailed => self.provider_selection_form(),
         }
     }
 
-    #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
+    fn render_loading<'a>(&'a self) -> Column<'a, ViewMessage> {
+        Column::new()
+            .push(Space::with_height(Length::Fixed(50.0)))
+            .push(text("Detecting your region...").size(16).color(color::GREY_3))
+            .push(Space::with_height(Length::Fixed(20.0)))
+            .align_x(Alignment::Center)
+            .spacing(10)
+    }
+
+    fn render_africa_flow<'a>(&'a self, state: &'a AfricaFlowState) -> Column<'a, ViewMessage> {
+        match state.native_page {
+            NativePage::AccountSelect => self.native_account_select_form(state),
+            NativePage::Login => self.native_login_form(state),
+            NativePage::Register => self.native_register_form(state),
+            NativePage::VerifyEmail => self.native_verify_email_form(state),
+            NativePage::CoincubePay => self.coincube_pay_form(state),
+        }
+    }
+
     fn provider_selection_form<'a>(&'a self) -> Column<'a, ViewMessage> {
         use liana_ui::component::{button as ui_button, text as ui_text};
         let info = if let Some(country) = &self.detected_country {
@@ -495,114 +359,10 @@ impl BuySellPanel {
             .width(Length::Fill)
     }
 
-
-    #[cfg(any(feature = "dev-meld", feature = "dev-onramp"))]
-    fn form_view<'a>(&'a self) -> Column<'a, ViewMessage> {
-        Column::new()
-            .push_maybe(self.error.as_ref().map(|err| {
-                Container::new(text(err).size(14).color(color::RED))
-                    .padding(10)
-
-                    .style(theme::card::invalid)
-            }))
-            .push(Space::with_height(Length::Fixed(20.0)))
-            .push(
-                Column::new()
-                    .push(text("Wallet Address").size(14).color(color::GREY_3))
-                    .push(Space::with_height(Length::Fixed(5.0)))
-                    .push({
-                        let placeholder = match self.network {
-                            Network::Bitcoin => "Enter mainnet Bitcoin address (1, 3, bc1)",
-                            _ => "Enter testnet Bitcoin address (2, tb1, bcrt1)",
-                        };
-
-                        form::Form::new_trimmed(placeholder, &self.wallet_address, |value| {
-                            ViewMessage::BuySell(BuySellMessage::WalletAddressChanged(value))
-                        })
-                        .size(16)
-                        .padding(15)
-                    })
-                    .spacing(5),
-            )
-            .push(Space::with_height(Length::Fixed(20.0)))
-            .push(
-                Row::new()
-                    .push(
-                        Column::new()
-                            .push(
-                                if cfg!(feature = "dev-onramp") {
-                                    text("Fiat Currency")
-                                } else {
-                                    text("Country Code")
-                                }
-                                .size(14)
-                                .color(color::GREY_3),
-                            )
-                            .push(Space::with_height(Length::Fixed(5.0)))
-                            .push({
-                                #[cfg(feature = "dev-meld")]
-                                {
-                                    form::Form::new_trimmed("US", &self.country_code, |value| {
-                                        ViewMessage::BuySell(BuySellMessage::CountryCodeChanged(
-                                            value,
-                                        ))
-                                    })
-                                    .size(16)
-                                    .padding(15);
-                                }
-
-                                #[cfg(feature = "dev-onramp")]
-                                {
-                                    form::Form::new_trimmed("USD", &self.fiat_currency, |value| {
-                                        ViewMessage::BuySell(BuySellMessage::FiatCurrencyChanged(
-                                            value,
-                                        ))
-                                    })
-                                    .size(16)
-                                    .padding(15)
-                                }
-                            })
-                            .spacing(5)
-                            .width(Length::FillPortion(1)),
-                    )
-                    .push(Space::with_width(Length::Fixed(20.0)))
-                    .push(
-                        Column::new()
-                            .push(text("Fiat Amount").size(14).color(color::GREY_3))
-                            .push(Space::with_height(Length::Fixed(5.0)))
-                            .push(
-                                form::Form::new_trimmed("60", &self.source_amount, |value| {
-                                    ViewMessage::BuySell(BuySellMessage::SourceAmountChanged(value))
-                                })
-                                .size(16)
-                                .padding(15),
-                            )
-                            .spacing(5)
-                            .width(Length::FillPortion(1)),
-                    ),
-            )
-            .push(Space::with_height(Length::Fixed(30.0)))
-            .push(if self.active_page.is_some() {
-                ui_button::secondary(Some(liana_ui::icon::globe_icon()), "Creating Session...")
-                    .width(Length::Fill)
-            } else if self.is_form_valid() {
-                ui_button::primary(Some(liana_ui::icon::globe_icon()), "Create Widget Session")
-                    .on_press(ViewMessage::BuySell(BuySellMessage::CreateSession))
-                    .width(Length::Fill)
-            } else {
-                ui_button::secondary(Some(liana_ui::icon::globe_icon()), "Create Widget Session")
-                    .width(Length::Fill)
-            })
-            .align_x(Alignment::Center)
-            .spacing(5)
-            .max_width(500)
-            .width(Length::Fill)
-    }
 }
 
-#[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
 impl BuySellPanel {
-    fn native_account_select_form<'a>(&'a self) -> Column<'a, ViewMessage> {
+    fn native_account_select_form<'a>(&'a self, state: &'a AfricaFlowState) -> Column<'a, ViewMessage> {
         use liana_ui::component::card as ui_card;
         use liana_ui::component::text as ui_text;
         use liana_ui::icon::{building_icon, person_icon};
@@ -620,11 +380,11 @@ impl BuySellPanel {
         let subheader = ui_text::p1_regular("Choose your account type").color(color::WHITE);
 
         let is_individual = matches!(
-            self.selected_account_type,
+            state.selected_account_type,
             Some(crate::app::view::message::AccountType::Individual)
         );
         let is_business = matches!(
-            self.selected_account_type,
+            state.selected_account_type,
             Some(crate::app::view::message::AccountType::Business)
         );
 
@@ -679,7 +439,7 @@ impl BuySellPanel {
             ViewMessage::BuySell(BuySellMessage::AccountTypeSelected(crate::app::view::message::AccountType::Business)),
         );
 
-        let button = if self.selected_account_type.is_some() {
+        let button = if state.selected_account_type.is_some() {
             ui_button::primary(None, "Get Started")
                 .on_press(ViewMessage::BuySell(BuySellMessage::GetStarted))
                 .width(Length::Fill)
@@ -703,7 +463,7 @@ impl BuySellPanel {
             .width(Length::Fill)
     }
 
-    fn native_login_form<'a>(&'a self) -> Column<'a, ViewMessage> {
+    fn native_login_form<'a>(&'a self, state: &'a AfricaFlowState) -> Column<'a, ViewMessage> {
         use liana_ui::component::card as ui_card;
         use liana_ui::component::form;
         use liana_ui::component::text as ui_text;
@@ -720,12 +480,12 @@ impl BuySellPanel {
 
         let subheader = ui_text::p1_regular("Sign in to your account").color(color::WHITE);
 
-        let email_input = form::Form::new_trimmed("Email", &self.login_username, |v| {
+        let email_input = form::Form::new_trimmed("Email", &state.login_username, |v| {
             ViewMessage::BuySell(BuySellMessage::LoginUsernameChanged(v))
         })
         .warning("Please enter your email address");
 
-        let password_input = form::Form::new_trimmed("Password", &self.login_password, |v| {
+        let password_input = form::Form::new_trimmed("Password", &state.login_password, |v| {
             ViewMessage::BuySell(BuySellMessage::LoginPasswordChanged(v))
         })
         .warning("Please enter your password")
@@ -766,7 +526,7 @@ impl BuySellPanel {
 
 #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
 impl BuySellPanel {
-    fn native_register_form<'a>(&'a self) -> Column<'a, ViewMessage> {
+    fn native_register_form<'a>(&'a self, state: &'a AfricaFlowState) -> Column<'a, ViewMessage> {
         use iced::widget::checkbox;
         use liana_ui::component::button as ui_button;
         use liana_ui::component::text as ui_text;
@@ -834,7 +594,7 @@ impl BuySellPanel {
         let name_row = Row::new()
             .push(
                 Container::new(
-                    form::Form::new("First Name", &self.first_name, |v| {
+                    form::Form::new("First Name", &state.first_name, |v| {
                         ViewMessage::BuySell(BuySellMessage::FirstNameChanged(v))
                     })
                     .size(16)
@@ -845,7 +605,7 @@ impl BuySellPanel {
             .push(Space::with_width(Length::Fixed(12.0)))
             .push(
                 Container::new(
-                    form::Form::new("Last Name", &self.last_name, |v| {
+                    form::Form::new("Last Name", &state.last_name, |v| {
                         ViewMessage::BuySell(BuySellMessage::LastNameChanged(v))
                     })
                     .size(16)
@@ -854,20 +614,20 @@ impl BuySellPanel {
                 .width(Length::FillPortion(1)),
             );
 
-        let email = form::Form::new("Email Address", &self.email, |v| {
+        let email = form::Form::new("Email Address", &state.email, |v| {
             ViewMessage::BuySell(BuySellMessage::EmailChanged(v))
         })
         .size(16)
         .padding(15);
 
-        let password = form::Form::new("Password", &self.password1, |v| {
+        let password = form::Form::new("Password", &state.password1, |v| {
             ViewMessage::BuySell(BuySellMessage::Password1Changed(v))
         })
         .size(16)
         .padding(15)
         .secure();
 
-        let confirm = form::Form::new("Confirm Password", &self.password2, |v| {
+        let confirm = form::Form::new("Confirm Password", &state.password2, |v| {
             ViewMessage::BuySell(BuySellMessage::Password2Changed(v))
         })
         .size(16)
@@ -876,7 +636,7 @@ impl BuySellPanel {
 
         let terms = Row::new()
             .push(
-                checkbox("", self.terms_accepted)
+                checkbox("", state.terms_accepted)
                     .on_toggle(|b| ViewMessage::BuySell(BuySellMessage::TermsToggled(b))),
             )
             .push(Space::with_width(Length::Fixed(8.0)))
@@ -889,7 +649,7 @@ impl BuySellPanel {
             )
             .align_y(Alignment::Center);
 
-        let create_btn = if self.is_registration_valid() {
+        let create_btn = if self.is_registration_valid(state) {
             ui_button::primary(None, "Create Account")
                 .on_press(ViewMessage::BuySell(BuySellMessage::SubmitRegistration))
                 .width(Length::Fill)
@@ -913,7 +673,7 @@ impl BuySellPanel {
             .push(email)
             .push(Space::with_height(Length::Fixed(10.0)))
             .push(password)
-            .push_maybe(self.get_password_validation_message().map(|msg| {
+            .push_maybe(self.get_password_validation_message(state).map(|msg| {
                 Container::new(ui_text::p2_regular(&msg).color(color::RED))
                     .padding(iced::Padding::new(2.0).top(2.0))
             }))
@@ -930,19 +690,19 @@ impl BuySellPanel {
     }
 
     #[inline]
-    pub fn is_registration_valid(&self) -> bool {
-        let email_ok = self.email.value.contains('@') && self.email.value.contains('.');
-        let pw_ok = self.is_password_valid() && self.password1.value == self.password2.value;
-        !self.first_name.value.is_empty()
-            && !self.last_name.value.is_empty()
+    pub fn is_registration_valid(&self, state: &AfricaFlowState) -> bool {
+        let email_ok = state.email.value.contains('@') && state.email.value.contains('.');
+        let pw_ok = self.is_password_valid(state) && state.password1.value == state.password2.value;
+        !state.first_name.value.is_empty()
+            && !state.last_name.value.is_empty()
             && email_ok
             && pw_ok
-            && self.terms_accepted
+            && state.terms_accepted
     }
 
     #[inline]
-    pub fn is_password_valid(&self) -> bool {
-        let password = &self.password1.value;
+    pub fn is_password_valid(&self, state: &AfricaFlowState) -> bool {
+        let password = &state.password1.value;
         if password.len() < 8 {
             return false;
         }
@@ -955,8 +715,8 @@ impl BuySellPanel {
         has_upper && has_lower && has_digit && has_special
     }
 
-    pub fn get_password_validation_message(&self) -> Option<String> {
-        let password = &self.password1.value;
+    pub fn get_password_validation_message(&self, state: &AfricaFlowState) -> Option<String> {
+        let password = &state.password1.value;
         if password.is_empty() {
             return None;
         }
@@ -987,10 +747,12 @@ impl BuySellPanel {
     }
 
     pub fn set_email_verification_status(&mut self, verified: Option<bool>) {
-        self.email_verification_status = verified;
+        if let BuySellFlowState::Africa(ref mut state) = self.flow_state {
+            state.email_verification_status = verified;
+        }
     }
 
-    fn native_verify_email_form<'a>(&'a self) -> Column<'a, ViewMessage> {
+    fn native_verify_email_form<'a>(&'a self, state: &'a AfricaFlowState) -> Column<'a, ViewMessage> {
         use liana_ui::component::button as ui_button;
         use liana_ui::component::text as ui_text;
         use liana_ui::component::text::text;
@@ -1033,7 +795,7 @@ impl BuySellPanel {
             .align_y(Alignment::Center);
 
         // Title and status-dependent subtitle
-        let title = match self.email_verification_status {
+        let title = match state.email_verification_status {
             Some(true) => Column::new()
                 .push(ui_text::h3("Email Verified!").color(color::GREEN))
                 .push(
@@ -1063,14 +825,14 @@ impl BuySellPanel {
         // Email display
         let email_display = Column::new()
             .push(
-                ui_text::p2_regular(&format!("Email sent to: {}", self.email.value))
+                ui_text::p2_regular(&format!("Email sent to: {}", state.email.value))
                     .color(color::WHITE),
             )
             .spacing(10)
             .align_x(Alignment::Center);
 
         // Status indicator and instructions
-        let status_section = match self.email_verification_status {
+        let status_section = match state.email_verification_status {
             None => Column::new()
                 .push(ui_text::p2_regular("Checking verification status...").color(color::ORANGE))
                 .spacing(10)
@@ -1096,7 +858,7 @@ impl BuySellPanel {
         };
 
         // Action buttons
-        let action_buttons = match self.email_verification_status {
+        let action_buttons = match state.email_verification_status {
             Some(true) => Row::new()
                 .push(
                     ui_button::primary(None, "Continue")
@@ -1141,7 +903,7 @@ impl BuySellPanel {
     }
 
     #[cfg(not(any(feature = "dev-meld", feature = "dev-onramp")))]
-    fn coincube_pay_form<'a>(&'a self) -> Column<'a, ViewMessage> {
+    fn coincube_pay_form<'a>(&'a self, state: &'a AfricaFlowState) -> Column<'a, ViewMessage> {
         use liana_ui::component::{button as ui_button, text as ui_text};
 
         let header = Row::new()
@@ -1170,7 +932,7 @@ impl BuySellPanel {
         }
 
         // Current price display
-        if let Some(price) = &self.mavapay_current_price {
+        if let Some(price) = &state.mavapay_current_price {
             column = column
                 .push(
                     Container::new(
@@ -1229,7 +991,7 @@ impl BuySellPanel {
                                 .push(
                                     form::Form::new_trimmed(
                                         "100000",
-                                        &self.mavapay_amount,
+                                        &state.mavapay_amount,
                                         |value| {
                                             ViewMessage::BuySell(
                                                 BuySellMessage::MavapayAmountChanged(value),
@@ -1249,7 +1011,7 @@ impl BuySellPanel {
                                 .push(
                                     form::Form::new_trimmed(
                                         "BTCSAT",
-                                        &self.mavapay_source_currency,
+                                        &state.mavapay_source_currency,
                                         |value| {
                                             ViewMessage::BuySell(
                                                 BuySellMessage::MavapaySourceCurrencyChanged(value),
@@ -1269,7 +1031,7 @@ impl BuySellPanel {
                                 .push(
                                     form::Form::new_trimmed(
                                         "NGNKOBO",
-                                        &self.mavapay_target_currency,
+                                        &state.mavapay_target_currency,
                                         |value| {
                                             ViewMessage::BuySell(
                                                 BuySellMessage::MavapayTargetCurrencyChanged(value),
@@ -1296,7 +1058,7 @@ impl BuySellPanel {
                                 .push(
                                     form::Form::new_trimmed(
                                         "1234567890",
-                                        &self.mavapay_bank_account_number,
+                                        &state.mavapay_bank_account_number,
                                         |value| {
                                             ViewMessage::BuySell(
                                                 BuySellMessage::MavapayBankAccountNumberChanged(
@@ -1318,7 +1080,7 @@ impl BuySellPanel {
                                 .push(
                                     form::Form::new_trimmed(
                                         "John Doe",
-                                        &self.mavapay_bank_account_name,
+                                        &state.mavapay_bank_account_name,
                                         |value| {
                                             ViewMessage::BuySell(
                                                 BuySellMessage::MavapayBankAccountNameChanged(
@@ -1344,7 +1106,7 @@ impl BuySellPanel {
                                 .push(
                                     form::Form::new_trimmed(
                                         "011",
-                                        &self.mavapay_bank_code,
+                                        &state.mavapay_bank_code,
                                         |value| {
                                             ViewMessage::BuySell(
                                                 BuySellMessage::MavapayBankCodeChanged(value),
@@ -1364,7 +1126,7 @@ impl BuySellPanel {
                                 .push(
                                     form::Form::new_trimmed(
                                         "First Bank",
-                                        &self.mavapay_bank_name,
+                                        &state.mavapay_bank_name,
                                         |value| {
                                             ViewMessage::BuySell(
                                                 BuySellMessage::MavapayBankNameChanged(value),
@@ -1392,7 +1154,7 @@ impl BuySellPanel {
         column = column.push(exchange_form);
 
         // Quote display with payment confirmation
-        if let Some(quote) = &self.mavapay_current_quote {
+        if let Some(quote) = &state.mavapay_current_quote {
             let mut quote_column = Column::new()
                 .push(ui_text::h5_medium("Quote Created Successfully").color(color::GREEN))
                 .push(Space::with_height(Length::Fixed(10.0)))
@@ -1452,7 +1214,7 @@ impl BuySellPanel {
         }
 
         // Payment status display
-        if let Some(payment_status) = &self.mavapay_payment_status {
+        if let Some(payment_status) = &state.mavapay_payment_status {
             let status_color = match payment_status.status.as_str() {
                 "PAID" | "SUCCESS" => color::GREEN,
                 "FAILED" => color::RED,
@@ -1487,7 +1249,7 @@ impl BuySellPanel {
                         ),
                 );
 
-            if self.mavapay_polling_active {
+            if state.mavapay_polling_active {
                 status_column = status_column
                     .push(Space::with_height(Length::Fixed(10.0)))
                     .push(
