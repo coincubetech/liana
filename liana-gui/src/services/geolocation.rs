@@ -94,7 +94,16 @@ impl CachedGeoLocator {
                 _ => None,
             };
             if let Some(r) = region {
-                return Ok((r, "ZZ".to_string()));
+                // Allow overriding country for testing; else use reasonable defaults per region
+                let forced_country = std::env::var("FORCE_COUNTRY").ok();
+                let country = forced_country
+                    .map(|c| c.trim().to_uppercase())
+                    .filter(|c| c.len() == 2)
+                    .unwrap_or_else(|| match r {
+                        Region::Africa => "NG".to_string(),
+                        Region::International => "US".to_string(),
+                    });
+                return Ok((r, country));
             }
         }
 
@@ -107,7 +116,15 @@ impl CachedGeoLocator {
                 _ => None,
             };
             if let Some(r) = region {
-                return Ok((r, "ZZ".to_string()));
+                let forced_country = std::env::var("FORCE_COUNTRY").ok();
+                let country = forced_country
+                    .map(|c| c.trim().to_uppercase())
+                    .filter(|c| c.len() == 2)
+                    .unwrap_or_else(|| match r {
+                        Region::Africa => "NG".to_string(),
+                        Region::International => "US".to_string(),
+                    });
+                return Ok((r, country));
             }
         }
 

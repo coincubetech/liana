@@ -522,7 +522,7 @@ impl State for BuySellPanel {
                                     wallet_address,
                                     country_code,
                                     source_amount,
-                                    ServiceProvider::Guardarian,
+                                    ServiceProvider::Transak,
                                     network,
                                 )
                                 .await
