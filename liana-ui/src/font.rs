@@ -4,6 +4,13 @@ use iced::{
 };
 use std::borrow::Cow;
 
+pub const ITALIC: Font = Font {
+    family: Family::Name("IBM Plex Sans"),
+    weight: Weight::Light,
+    style: iced::font::Style::Italic,
+    stretch: Stretch::Normal,
+};
+
 pub const BOLD: Font = Font {
     family: Family::Name("IBM Plex Sans"),
     weight: Weight::Bold,

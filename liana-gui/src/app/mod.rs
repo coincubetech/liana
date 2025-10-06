@@ -28,7 +28,8 @@ pub use config::Config;
 pub use message::Message;
 
 use state::{
-    CoinsPanel, CreateSpendPanel, Home, PsbtsPanel, ReceivePanel, State, TransactionsPanel,
+    BuySellPanel, CoinsPanel, CreateSpendPanel, Home, PsbtsPanel, ReceivePanel, State,
+    TransactionsPanel,
 };
 use wallet::{sync_status, SyncStatus};
 
@@ -59,7 +60,7 @@ struct Panels {
     create_spend: CreateSpendPanel,
     settings: SettingsState,
     #[cfg(feature = "buysell")]
-    buy_sell: crate::app::view::buysell::BuySellPanel,
+    buy_sell: BuySellPanel,
 }
 
 impl Panels {
@@ -106,14 +107,14 @@ impl Panels {
                 cache.network,
             ),
             settings: state::SettingsState::new(
-                data_dir,
+                data_dir.clone(),
                 wallet.clone(),
                 daemon_backend,
                 internal_bitcoind.is_some(),
                 config.clone(),
             ),
             #[cfg(feature = "buysell")]
-            buy_sell: crate::app::view::buysell::BuySellPanel::new(cache.network),
+            buy_sell: BuySellPanel::new(cache.network, wallet.clone(), data_dir),
         }
     }
 

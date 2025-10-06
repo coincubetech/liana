@@ -3,7 +3,7 @@ pub mod export;
 mod label;
 mod psbt;
 mod psbts;
-mod receive;
+pub mod receive;
 mod settings;
 mod spend;
 mod transactions;
@@ -39,6 +39,8 @@ use crate::daemon::{
     Daemon,
 };
 use crate::utils::now;
+
+// export panels
 pub use coins::CoinsPanel;
 use label::LabelsEdited;
 pub use psbts::PsbtsPanel;
@@ -46,6 +48,8 @@ pub use receive::ReceivePanel;
 pub use settings::SettingsState;
 pub use spend::CreateSpendPanel;
 pub use transactions::TransactionsPanel;
+#[cfg(feature = "buysell")]
+pub use buysell::BuySellPanel;
 
 pub trait State {
     fn view<'a>(&'a self, cache: &'a Cache) -> Element<'a, view::Message>;

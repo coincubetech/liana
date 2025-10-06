@@ -167,6 +167,10 @@ pub fn enter_box_icon() -> Text<'static> {
     bootstrap_icon('\u{F1BE}')
 }
 
+pub fn qr_code_icon() -> Text<'static> {
+    bootstrap_icon('\u{F6AE}')
+}
+
 const ICONEX_ICONS: Font = Font::with_name("Untitled1");
 
 fn iconex_icon(unicode: char) -> Text<'static> {

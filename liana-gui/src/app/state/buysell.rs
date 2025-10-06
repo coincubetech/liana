@@ -1,4 +1,5 @@
 use iced::Task;
+use liana::miniscript::bitcoin;
 use std::sync::Arc;
 
 #[cfg(feature = "webview")]
@@ -14,7 +15,7 @@ use crate::app::buysell::{meld::MeldError, ServiceProvider};
 #[cfg(feature = "dev-onramp")]
 use crate::app::buysell::onramper;
 
-#[cfg(all(feature = "buysell", not(feature = "webview")))]
+#[cfg(not(feature = "webview"))]
 use crate::app::view::buysell::NativePage;
 
 use crate::{
@@ -22,8 +23,8 @@ use crate::{
         self,
         cache::Cache,
         message::Message,
-        state::State,
-        view::{self, buysell::BuySellPanel, BuySellMessage, Message as ViewMessage},
+        state::{receive::Modal, State},
+        view::{self, BuySellMessage, Message as ViewMessage},
     },
     daemon::Daemon,
 };
@@ -33,6 +34,22 @@ use crate::{
 pub enum WebviewMessage {
     Action(iced_webview::advanced::Action),
     Created(iced_webview::ViewId),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LabelledAddress {
+    pub address: bitcoin::Address,
+    pub index: bitcoin::bip32::ChildNumber,
+    pub label: Option<String>,
+}
+
+impl std::fmt::Display for LabelledAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.label {
+            Some(l) => write!(f, "{}: {}", l, self.address),
+            None => std::fmt::Display::fmt(&self.address, f),
+        }
+    }
 }
 
 /// Map webview messages to main app messages (static version for Task::map)
@@ -54,13 +71,131 @@ fn init_webview() -> WebView<iced_webview::Ultralight, WebviewMessage> {
     WebView::new().on_create_view(crate::app::state::buysell::WebviewMessage::Created)
 }
 
-impl Default for BuySellPanel {
-    fn default() -> Self {
-        Self::new(liana::miniscript::bitcoin::Network::Bitcoin)
+pub struct BuySellPanel {
+    // TODO: Detect country and currency using ip-api.com, with drop-down for manual selection
+    pub error: Option<String>,
+    pub network: bitcoin::Network,
+
+    pub wallet: Arc<app::wallet::Wallet>,
+    pub data_dir: crate::dir::LianaDirectory,
+    pub modal: Modal,
+
+    #[cfg(feature = "dev-meld")]
+    pub meld_client: MeldClient,
+
+    #[cfg(any(feature = "dev-onramp", feature = "dev-meld"))]
+    pub addresses: Vec<LabelledAddress>,
+
+    #[cfg(any(feature = "dev-onramp", feature = "dev-meld"))]
+    pub picked_address: Option<usize>,
+
+    // Ultralight webview component for Meld widget integration with performance optimizations
+    #[cfg(feature = "webview")]
+    pub webview: Option<WebView<iced_webview::Ultralight, WebviewMessage>>,
+
+    // Current webview page url
+    #[cfg(feature = "webview")]
+    pub session_url: Option<String>,
+
+    // Current active webview "page": view_id
+    #[cfg(feature = "webview")]
+    pub active_page: Option<iced_webview::ViewId>,
+
+    // Native buysell
+    #[cfg(not(feature = "webview"))]
+    pub registration_state: crate::services::registration::RegistrationState,
+}
+
+impl BuySellPanel {
+    pub fn new(
+        network: bitcoin::Network,
+        wallet: Arc<app::wallet::Wallet>,
+        data_dir: crate::dir::LianaDirectory,
+    ) -> Self {
+        Self {
+            error: None,
+            network,
+
+            wallet,
+            data_dir,
+            modal: Modal::None,
+
+            #[cfg(feature = "dev-meld")]
+            meld_client: MeldClient::new(),
+
+            #[cfg(any(feature = "dev-onramp", feature = "dev-meld"))]
+            addresses: Vec::new(),
+
+            #[cfg(any(feature = "dev-onramp", feature = "dev-meld"))]
+            picked_address: None,
+
+            #[cfg(feature = "webview")]
+            webview: None,
+            #[cfg(feature = "webview")]
+            session_url: None,
+            #[cfg(feature = "webview")]
+            active_page: None,
+
+            #[cfg(not(feature = "webview"))]
+            registration_state: Default::default(),
+        }
+    }
+
+    pub fn set_error(&mut self, error: String) {
+        self.error = Some(error);
+    }
+
+    #[cfg(not(feature = "webview"))]
+    pub fn set_login_username(&mut self, v: String) {
+        self.registration_state.login_username.value = v;
+        self.registration_state.login_username.valid =
+            !self.registration_state.login_username.value.is_empty();
+    }
+
+    #[cfg(not(feature = "webview"))]
+    pub fn set_login_password(&mut self, v: String) {
+        self.registration_state.login_password.value = v;
+        self.registration_state.login_password.valid =
+            !self.registration_state.login_password.value.is_empty();
+    }
+
+    #[cfg(not(feature = "webview"))]
+    pub fn is_login_form_valid(&self) -> bool {
+        self.registration_state.login_username.valid && self.registration_state.login_password.valid
     }
 }
 
 impl State for BuySellPanel {
+    fn reload(
+        &mut self,
+        daemon: Arc<dyn Daemon + Sync + Send>,
+        _wallet: Arc<app::wallet::Wallet>,
+    ) -> Task<Message> {
+        Task::perform(
+            async move { daemon.list_revealed_addresses(false, true, 50, None).await },
+            |res| match res {
+                Ok(out) => {
+                    let addresses = out
+                        .addresses
+                        .into_iter()
+                        .map(|a| LabelledAddress {
+                            address: a.address,
+                            index: a.index,
+                            label: a.label,
+                        })
+                        .collect();
+
+                    Message::View(ViewMessage::BuySell(BuySellMessage::LoadedAddresses(
+                        addresses,
+                    )))
+                }
+                Err(err) => Message::View(ViewMessage::BuySell(BuySellMessage::SessionError(
+                    err.to_string(),
+                ))),
+            },
+        )
+    }
+
     fn view<'a>(&'a self, cache: &'a Cache) -> Element<'a, ViewMessage> {
         // Return the meld view directly - dashboard wrapper will be applied by app/mod.rs
         view::dashboard(&app::Menu::BuySell, cache, None, self.view())
@@ -68,13 +203,13 @@ impl State for BuySellPanel {
 
     fn update(
         &mut self,
-        _daemon: Arc<dyn Daemon + Sync + Send>,
-        _cache: &Cache,
+        daemon: Arc<dyn Daemon + Sync + Send>,
+        cache: &Cache,
         message: Message,
     ) -> Task<Message> {
         let message = match message {
             // Handle global navigation for native flow (Previous)
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             Message::View(ViewMessage::Previous) => {
                 match self.registration_state.native_page {
                     NativePage::Register => {
@@ -88,85 +223,114 @@ impl State for BuySellPanel {
 
                 return Task::none();
             }
+            Message::View(ViewMessage::Select(index)) => {
+                let Some(la) = self.addresses.get(index) else {
+                    return Task::none();
+                };
+
+                self.modal = Modal::VerifyAddress(super::receive::VerifyAddressModal::new(
+                    self.data_dir.clone(),
+                    self.wallet.clone(),
+                    cache.network,
+                    la.address.clone(),
+                    la.index,
+                ));
+
+                return Task::none();
+            }
+            Message::View(ViewMessage::ShowQrCode(index)) => {
+                let Some(la) = self.addresses.get(index) else {
+                    return Task::none();
+                };
+
+                if let Some(modal) = super::receive::ShowQrCodeModal::new(&la.address, la.index) {
+                    self.modal = Modal::ShowQrCode(modal);
+                }
+
+                return Task::none();
+            }
+            Message::View(ViewMessage::Next) => {
+                log::info!("[BUYSELL] Loaded...");
+                return Task::none();
+            }
+            Message::View(ViewMessage::Close) => {
+                self.modal = Modal::None;
+                return Task::none();
+            }
             Message::View(ViewMessage::BuySell(message)) => message,
             _ => return Task::none(),
         };
 
         match message {
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::LoginUsernameChanged(v) => {
                 self.set_login_username(v);
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::LoginPasswordChanged(v) => {
                 self.set_login_password(v);
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::SubmitLogin => {
-                return self.handle_native_login();
+                if self.is_login_form_valid() {
+                    self.error = None;
+                } else {
+                    self.set_error("Please enter username and password".into());
+                }
+
+                return Task::none();
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::CreateAccountPressed => {
                 self.set_error("Create Account not implemented yet".to_string());
             }
-            BuySellMessage::WalletAddressChanged(address) => {
-                self.set_wallet_address(address);
-            }
-            #[cfg(feature = "dev-meld")]
-            BuySellMessage::CountryCodeChanged(code) => {
-                self.set_country_code(code);
-            }
-            #[cfg(feature = "dev-onramp")]
-            BuySellMessage::FiatCurrencyChanged(fiat) => {
-                self.set_fiat_currency(fiat);
-            }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::AccountTypeSelected(t) => {
                 self.registration_state.selected_account_type = Some(t);
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::GetStarted => {
                 if self.registration_state.selected_account_type.is_some() {
                     // Navigate to registration page (native flow)
                     self.registration_state.native_page = NativePage::Register;
                 }
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::FirstNameChanged(v) => {
                 self.registration_state.first_name.value = v;
                 self.registration_state.first_name.valid =
                     !self.registration_state.first_name.value.is_empty();
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::LastNameChanged(v) => {
                 self.registration_state.last_name.value = v;
                 self.registration_state.last_name.valid =
                     !self.registration_state.last_name.value.is_empty();
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::EmailChanged(v) => {
                 self.registration_state.email.value = v;
                 self.registration_state.email.valid =
                     self.registration_state.email.value.contains('@')
                         && self.registration_state.email.value.contains('.')
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::Password1Changed(v) => {
                 self.registration_state.password1.value = v;
                 self.registration_state.password1.valid = self.is_password_valid();
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::Password2Changed(v) => {
                 self.registration_state.password2.value = v;
                 self.registration_state.password2.valid = self.registration_state.password2.value
                     == self.registration_state.password1.value
                     && !self.registration_state.password2.value.is_empty();
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::TermsToggled(b) => {
                 self.registration_state.terms_accepted = b;
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::SubmitRegistration => {
                 tracing::info!("🔍 [REGISTRATION] Submit registration button clicked");
 
@@ -272,18 +436,18 @@ impl State for BuySellPanel {
                     );
                 }
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::RegistrationSuccess => {
                 // Registration successful, navigate to email verification
                 self.registration_state.native_page = NativePage::VerifyEmail;
                 self.registration_state.email_verification_status = Some(false); // pending verification
                 self.error = None;
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::RegistrationError(error) => {
                 self.error = Some(format!("Registration failed: {}", error));
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::CheckEmailVerificationStatus => {
                 tracing::info!(
                     "🔍 [EMAIL_VERIFICATION] Checking email verification status for: {}",
@@ -328,7 +492,7 @@ impl State for BuySellPanel {
                     },
                 );
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::EmailVerificationStatusChecked(verified) => {
                 self.registration_state.email_verification_status = Some(verified);
                 if verified {
@@ -337,12 +501,12 @@ impl State for BuySellPanel {
                     self.error = None;
                 }
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::EmailVerificationStatusError(error) => {
                 self.registration_state.email_verification_status = Some(false); // fallback to pending
                 self.error = Some(format!("Error checking verification status: {}", error));
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::ResendVerificationEmail => {
                 tracing::info!(
                     "📧 [RESEND_EMAIL] Resending verification email to: {}",
@@ -378,124 +542,161 @@ impl State for BuySellPanel {
                     },
                 );
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::ResendEmailSuccess => {
                 self.registration_state.email_verification_status = Some(false); // back to pending
                 self.error = Some("Verification email resent successfully!".to_string());
             }
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
+            #[cfg(not(feature = "webview"))]
             BuySellMessage::ResendEmailError(error) => {
                 self.error = Some(format!("Error resending email: {}", error));
             }
 
-            BuySellMessage::SourceAmountChanged(amount) => {
-                self.set_source_amount(amount);
+            BuySellMessage::CreateNewAddress => {
+                return Task::perform(
+                    async move { daemon.get_new_address().await },
+                    |res| match res {
+                        Ok(out) => Message::View(ViewMessage::BuySell(
+                            BuySellMessage::PickedAddress(LabelledAddress {
+                                address: out.address,
+                                index: out.derivation_index,
+                                label: Some("new.buysell".to_string()),
+                            }),
+                        )),
+                        Err(err) => Message::View(ViewMessage::BuySell(
+                            BuySellMessage::SessionError(err.to_string()),
+                        )),
+                    },
+                )
             }
+            BuySellMessage::LoadedAddresses(addresses) => self.addresses = addresses,
+            BuySellMessage::PickedAddress(la) => {
+                let find = self
+                    .addresses
+                    .iter()
+                    .enumerate()
+                    .find(|(.., addr)| *addr == &la);
 
-            #[cfg(all(feature = "buysell", not(feature = "webview")))]
-            BuySellMessage::CreateSession => {
-                // No providers in default build; ignore or show error
-                self.set_error("No provider configured in this build".into());
-            }
-
-            #[cfg(all(feature = "dev-onramp", not(feature = "dev-meld")))]
-            BuySellMessage::CreateSession => {
-                if self.is_form_valid() {
-                    let Some(onramper_url) = onramper::create_widget_url(
-                        &self.fiat_currency.value,
-                        &self.source_amount.value,
-                        &self.wallet_address.value,
-                    ) else {
-                        self.error = Some("Onramper API key not set as an environment variable (ONRAMPER_API_KEY) at compile time".to_string());
-                        return Task::none();
-                    };
-
-                    tracing::info!(
-                        "🚀 [BUYSELL] Creating new onramper widget session: {}",
-                        &onramper_url
-                    );
-
-                    let open_webview = Message::View(ViewMessage::BuySell(
-                        BuySellMessage::WebviewOpenUrl(onramper_url),
-                    ));
-
-                    return Task::done(open_webview);
-                } else {
-                    tracing::warn!("⚠️ [BUYSELL] Cannot create session - form validation failed");
+                match find {
+                    Some((index, ..)) => self.picked_address = Some(index),
+                    None => {
+                        self.picked_address = Some(self.addresses.len());
+                        self.addresses.push(la.clone());
+                    }
                 }
+            }
+            BuySellMessage::ClearCurrentAddress => {
+                self.picked_address = None;
+
+                if let Some(page) = self.active_page.take() {
+                    return self
+                        .webview
+                        .get_or_insert_with(init_webview)
+                        .update(WebviewAction::CloseView(page))
+                        .map(map_webview_message_static);
+                };
+            }
+
+            #[cfg(feature = "dev-onramp")]
+            BuySellMessage::CreateSession => {
+                let Some(idx) = &self.picked_address else {
+                    return Task::none();
+                };
+
+                // TODO: infer currency from user ip
+                let LabelledAddress { address, .. } = &self.addresses[*idx];
+                let fiat_currency = "USD";
+
+                let Some(onramper_url) =
+                    onramper::create_widget_url(&fiat_currency, &address.to_string())
+                else {
+                    self.error = Some("Onramper API key not set as an environment variable (ONRAMPER_API_KEY) at compile time".to_string());
+                    return Task::none();
+                };
+
+                tracing::info!(
+                    "🚀 [BUYSELL] Creating new onramper widget session: {}",
+                    &onramper_url
+                );
+
+                let open_webview = Message::View(ViewMessage::BuySell(
+                    BuySellMessage::WebviewOpenUrl(onramper_url),
+                ));
+
+                return Task::done(open_webview);
             }
 
             #[cfg(feature = "dev-meld")]
             BuySellMessage::CreateSession => {
-                if self.is_form_valid() {
-                    tracing::info!(
-                        "🚀 [BUYSELL] Creating new session - clearing any existing session data"
-                    );
+                let Some(idx) = &self.picked_address else {
+                    return Task::none();
+                };
 
-                    // init session
-                    let wallet_address = self.wallet_address.value.clone();
-                    let country_code = self.country_code.value.clone();
-                    let source_amount = self.source_amount.value.clone();
+                tracing::info!(
+                    "🚀 [BUYSELL] Creating new session - clearing any existing session data"
+                );
 
-                    tracing::info!(
-                        "🚀 [BUYSELL] Making fresh API call with: address={}, country={}, amount={}",
-                        wallet_address,
-                        country_code,
-                        source_amount
-                    );
+                // init session
+                let LabelledAddress { address, .. } = &self.addresses[*idx];
+                let wallet_address = address.to_string();
 
-                    return Task::perform(
-                        {
-                            // TODO: allow users to select source provider, in a drop down
-                            let provider = ServiceProvider::Transak;
-                            let network = self.network;
-                            let client = self.meld_client.clone();
+                // TODO: user should set this within webview
+                let country_code = "USD";
+                let source_amount = "60";
 
-                            async move {
-                                match client
-                                    .create_widget_session(
-                                        wallet_address,
-                                        country_code,
-                                        source_amount,
-                                        provider,
-                                        network,
-                                    )
-                                    .await
-                                {
-                                    Ok(response) => Ok(response.widget_url),
-                                    Err(MeldError::Network(e)) => {
-                                        Err(format!("Network error: {}", e))
-                                    }
-                                    Err(MeldError::Serialization(e)) => {
-                                        Err(format!("Data error: {}", e))
-                                    }
-                                    Err(MeldError::Api(e)) => Err(format!("API error: {}", e)),
+                tracing::info!(
+                    "🚀 [BUYSELL] Making fresh API call with: address={}, country={}, amount={}",
+                    wallet_address,
+                    country_code,
+                    source_amount
+                );
+
+                return Task::perform(
+                    {
+                        // TODO: allow users to select source provider, in a drop down
+                        let provider = ServiceProvider::Transak;
+                        let network = self.network;
+                        let client = self.meld_client.clone();
+
+                        async move {
+                            match client
+                                .create_widget_session(
+                                    wallet_address.as_str(),
+                                    country_code,
+                                    source_amount,
+                                    provider,
+                                    network,
+                                )
+                                .await
+                            {
+                                Ok(url) => Ok(url),
+                                Err(MeldError::Network(e)) => Err(format!("Network error: {}", e)),
+                                Err(MeldError::Serialization(e)) => {
+                                    Err(format!("Data error: {}", e))
                                 }
+                                Err(MeldError::Api(e)) => Err(format!("API error: {}", e)),
                             }
-                        },
-                        |result| match result {
-                            Ok(widget_url) => {
-                                tracing::info!(
-                                    "🌐 [BUYSELL] Meld session created with URL: {}",
-                                    widget_url
-                                );
+                        }
+                    },
+                    |result| match result {
+                        Ok(widget_url) => {
+                            tracing::info!(
+                                "🌐 [BUYSELL] Meld session created with URL: {}",
+                                widget_url
+                            );
 
-                                Message::View(ViewMessage::BuySell(BuySellMessage::WebviewOpenUrl(
-                                    widget_url,
-                                )))
-                            }
-                            Err(error) => {
-                                tracing::error!("❌ [MELD] Session creation failed: {}", error);
-                                Message::View(ViewMessage::BuySell(BuySellMessage::SessionError(
-                                    error,
-                                )))
-                            }
-                        },
-                    );
-                } else {
-                    tracing::warn!("⚠️ [BUYSELL] Cannot create session - form validation failed");
-                }
+                            Message::View(ViewMessage::BuySell(BuySellMessage::WebviewOpenUrl(
+                                widget_url,
+                            )))
+                        }
+                        Err(error) => {
+                            tracing::error!("❌ [MELD] Session creation failed: {}", error);
+                            Message::View(ViewMessage::BuySell(BuySellMessage::SessionError(error)))
+                        }
+                    },
+                );
             }
+
             BuySellMessage::SessionError(error) => {
                 self.set_error(error);
             }
@@ -503,11 +704,10 @@ impl State for BuySellPanel {
             // webview logic
             #[cfg(feature = "webview")]
             BuySellMessage::ViewTick(id) => {
-                let action = WebviewAction::Update(id);
                 return self
                     .webview
                     .get_or_insert_with(init_webview)
-                    .update(action)
+                    .update(WebviewAction::Update(id))
                     .map(map_webview_message_static);
             }
             #[cfg(feature = "webview")]
@@ -521,7 +721,7 @@ impl State for BuySellPanel {
             #[cfg(feature = "webview")]
             BuySellMessage::WebviewOpenUrl(url) => {
                 // Load URL into Ultralight webview
-                tracing::info!("🌐 [LIANA] Loading Ultralight webview with URL: {}", url);
+                tracing::info!("🌐 [BUYSELL] Loading Ultralight webview with URL: {}", url);
                 self.session_url = Some(url.clone());
 
                 // Create webview with URL string and immediately update to ensure content loads
@@ -533,18 +733,14 @@ impl State for BuySellPanel {
             }
             #[cfg(feature = "webview")]
             BuySellMessage::WebviewCreated(id) => {
-                tracing::info!("🌐 [LIANA] Activating Webview Page: {}", id);
+                tracing::info!("🌐 [BUYSELL] Activating Webview Page: {}", id);
 
                 // set active page to selected view id
+                let og = self.active_page.take();
                 self.active_page = Some(id);
-            }
-            #[cfg(feature = "webview")]
-            BuySellMessage::CloseWebview => {
-                self.session_url = None;
 
-                if let (Some(webview), Some(id)) = (self.webview.as_mut(), self.active_page.take())
-                {
-                    tracing::info!("🌐 [LIANA] Closing webview");
+                if let Some(id) = og {
+                    let webview = self.webview.get_or_insert_with(init_webview);
                     return webview
                         .update(WebviewAction::CloseView(id))
                         .map(map_webview_message_static);
@@ -555,30 +751,16 @@ impl State for BuySellPanel {
         Task::none()
     }
 
-    fn close(&mut self) -> Task<Message> {
-        #[cfg(feature = "webview")]
-        {
-            return Task::done(Message::View(ViewMessage::BuySell(
-                BuySellMessage::CloseWebview,
-            )));
-        }
-        #[cfg(not(feature = "webview"))]
-        {
-            Task::none()
-        }
-    }
-
     fn subscription(&self) -> iced::Subscription<Message> {
         #[cfg(feature = "webview")]
         {
-            use std::time::Duration;
-
             if let Some(id) = self.active_page {
                 let interval = if cfg!(debug_assertions) {
-                    Duration::from_millis(250)
+                    std::time::Duration::from_millis(250)
                 } else {
-                    Duration::from_millis(100)
+                    std::time::Duration::from_millis(100)
                 };
+
                 return iced::time::every(interval).with(id).map(|(i, ..)| {
                     Message::View(ViewMessage::BuySell(BuySellMessage::ViewTick(i)))
                 });
@@ -586,18 +768,5 @@ impl State for BuySellPanel {
         }
 
         iced::Subscription::none()
-    }
-}
-
-#[cfg(all(feature = "buysell", not(feature = "webview")))]
-impl BuySellPanel {
-    pub fn handle_native_login(&mut self) -> Task<Message> {
-        if self.is_login_form_valid() {
-            self.error = None;
-        } else {
-            self.set_error("Please enter username and password".into());
-        }
-
-        Task::none()
     }
 }

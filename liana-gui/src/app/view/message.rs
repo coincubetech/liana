@@ -1,6 +1,5 @@
 use crate::{
-    app::menu::Menu,
-    app::view::FiatAmountConverter,
+    app::{menu::Menu, state::buysell::LabelledAddress, view::FiatAmountConverter},
     export::ImportExportMessage,
     node::bitcoind::RpcAuthType,
     services::fiat::{Currency, PriceSource},
@@ -200,14 +199,11 @@ pub enum BuySellMessage {
     ResendEmailError(String),
 
     // Shared form fields (for provider-integrated builds)
-    WalletAddressChanged(String),
-    #[cfg(feature = "dev-meld")]
-    CountryCodeChanged(String),
-    #[cfg(feature = "dev-onramp")]
-    FiatCurrencyChanged(String),
-    SourceAmountChanged(String),
-
     CreateSession,
+    CreateNewAddress,
+    ClearCurrentAddress,
+    LoadedAddresses(Vec<LabelledAddress>),
+    PickedAddress(LabelledAddress),
     SessionError(String),
 
     // webview messages (gated)
@@ -219,8 +215,6 @@ pub enum BuySellMessage {
     WebviewAction(iced_webview::advanced::Action),
     #[cfg(feature = "webview")]
     WebviewOpenUrl(String),
-    #[cfg(feature = "webview")]
-    CloseWebview,
 }
 
 #[derive(Debug, Clone)]
