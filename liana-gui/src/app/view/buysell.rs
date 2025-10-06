@@ -38,7 +38,7 @@ pub enum NativePage {
 
 impl BuySellPanel {
     pub fn view<'a>(&'a self) -> iced::Element<'a, ViewMessage, liana_ui::theme::Theme> {
-        let content = {
+        let column = {
             // attempt to render webview (if available)
             #[cfg(feature = "webview")]
             let view = self
@@ -120,25 +120,16 @@ impl BuySellPanel {
                 column = column.push(self.form_view())
             };
 
-            let column = column
+            column
                 .align_x(Alignment::Center)
                 .spacing(7) // Reduced spacing for more compact layout
-                .width(Length::Fill);
-
-            Container::new(column)
                 .width(Length::Fill)
-                .align_y(Alignment::Start)
-                .align_x(Alignment::Center)
         };
 
-        let overlay = match &self.modal {
-            Modal::VerifyAddress(m) => m.view(),
-            Modal::ShowQrCode(m) => m.view(),
-            Modal::None => return content.into(),
-        };
-
-        modal::Modal::new(content, overlay)
-            .on_blur(Some(ViewMessage::Close))
+        Container::new(column)
+            .width(Length::Fill)
+            .align_y(Alignment::Start)
+            .align_x(Alignment::Center)
             .into()
     }
 

@@ -197,8 +197,17 @@ impl State for BuySellPanel {
     }
 
     fn view<'a>(&'a self, cache: &'a Cache) -> Element<'a, ViewMessage> {
-        // Return the meld view directly - dashboard wrapper will be applied by app/mod.rs
-        view::dashboard(&app::Menu::BuySell, cache, None, self.view())
+        let inner = view::dashboard(&app::Menu::BuySell, cache, None, self.view());
+
+        let overlay = match &self.modal {
+            Modal::VerifyAddress(m) => m.view(),
+            Modal::ShowQrCode(m) => m.view(),
+            Modal::None => return inner,
+        };
+
+        liana_ui::widget::modal::Modal::new(inner, overlay)
+            .on_blur(Some(ViewMessage::Close))
+            .into()
     }
 
     fn update(
