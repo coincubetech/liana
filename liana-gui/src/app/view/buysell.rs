@@ -52,7 +52,7 @@ impl BuySellPanel {
                 })
                 .flatten();
 
-            let enable_webview = self.picked_address.is_some() && self.active_page.is_some();
+            let enable_webview = self.generated_address.is_some() && self.active_page.is_some();
             let column = Column::new()
                 // COINCUBE branding
                 .push(
@@ -74,10 +74,8 @@ impl BuySellPanel {
                         })
                         .push_maybe({
                             enable_webview.then(|| {
-                                ui_button::secondary(Some(cross_icon()), "Reselect Address")
-                                    .on_press(ViewMessage::BuySell(
-                                        BuySellMessage::ClearCurrentAddress,
-                                    ))
+                                ui_button::secondary(Some(reload_icon()), "Reset Widget")
+                                    .on_press(ViewMessage::BuySell(BuySellMessage::ResetWidget))
                             })
                         })
                         .align_y(Alignment::Center),
@@ -92,16 +90,6 @@ impl BuySellPanel {
                     self.error
                         .is_some()
                         .then(|| Space::with_height(Length::Fixed(20.0))),
-                )
-                // simple separator
-                .push(
-                    container(Space::with_height(1))
-                        .style(|_| {
-                            iced::widget::container::background(iced::Background::Color(
-                                color::GREY_6,
-                            ))
-                        })
-                        .width(Length::Fill),
                 )
                 .push_maybe((!enable_webview).then(|| self.form_view()));
 
@@ -151,11 +139,11 @@ impl BuySellPanel {
         };
 
         let mut column = Column::new();
-        column = match self.picked_address.as_ref() {
+        column = match self.generated_address.as_ref() {
             Some(addr) => column
-                .push(text("Selected Address").size(14).color(color::GREY_3))
+                .push(text("Generated Address").size(14).color(color::GREY_3))
                 .push({
-                    let address_text = self.addresses[*addr].address.to_string();
+                    let address_text = addr.to_string();
 
                     card::simple(
                         Column::new()
@@ -184,12 +172,12 @@ impl BuySellPanel {
                                 Row::new()
                                     .push(
                                         button::secondary(None, "Verify on hardware device")
-                                            .on_press(ViewMessage::Select(*addr)),
+                                            .on_press(ViewMessage::Select(0)),
                                     )
                                     .push(Space::with_width(Length::Fill))
                                     .push(
                                         Button::new(qr_code_icon().style(theme::text::secondary))
-                                            .on_press(ViewMessage::ShowQrCode(*addr))
+                                            .on_press(ViewMessage::ShowQrCode(0))
                                             .style(theme::button::transparent_border),
                                     )
                                     .push(
@@ -209,25 +197,65 @@ impl BuySellPanel {
                         .width(iced::Length::Fill),
                 ),
             None => column
-                .push(
-                    text("Pick a Recipient Address")
-                        .size(14)
-                        .color(color::GREY_3),
-                )
                 .push({
-                    iced::widget::pick_list(
-                        self.addresses.clone(),
-                        None::<LabelledAddress>,
-                        |pick| ViewMessage::BuySell(BuySellMessage::PickedAddress(pick)),
-                    )
-                    .padding(10.0)
-                    .placeholder("Select from your empty recipient addresses")
+                    let state = self.state.clone();
+
+                    Column::new()
+                        .push(
+                            ui_button::secondary(
+                                Some(bitcoin_icon()),
+                                "Buy Bitcoin using Fiat Currencies",
+                            )
+                            .on_press(ViewMessage::BuySell(BuySellMessage::SetPanelState(
+                                PanelState::Buy,
+                            )))
+                            .style(move |th, st| match state {
+                                Some(PanelState::Buy) => liana_ui::theme::button::primary(th, st),
+                                _ => liana_ui::theme::button::secondary(th, st),
+                            })
+                            .padding(30)
+                            .width(iced::Length::Fill),
+                        )
+                        .push(
+                            ui_button::secondary(
+                                Some(dollar_icon()),
+                                "Sell Bitcoin to a Fiat Currency",
+                            )
+                            .on_press(ViewMessage::BuySell(BuySellMessage::SetPanelState(
+                                PanelState::Sell,
+                            )))
+                            .style(move |th, st| match state {
+                                Some(PanelState::Sell) => liana_ui::theme::button::primary(th, st),
+                                _ => liana_ui::theme::button::secondary(th, st),
+                            })
+                            .padding(30)
+                            .width(iced::Length::Fill),
+                        )
+                        .spacing(15)
+                        .padding(5)
                 })
-                .push(
+                .push_maybe(self.state.is_some().then(|| {
+                    container(Space::with_height(1))
+                        .style(|_| {
+                            iced::widget::container::background(iced::Background::Color(
+                                color::GREY_6,
+                            ))
+                        })
+                        .width(Length::Fill)
+                }))
+                .push_maybe(matches!(self.state, Some(PanelState::Buy)).then(|| {
                     ui_button::secondary(Some(plus_icon()), "Generate New Address")
-                        .on_press(ViewMessage::BuySell(BuySellMessage::CreateNewAddress))
-                        .width(iced::Length::Fill),
-                ),
+                        .on_press_maybe(
+                            matches!(self.state, Some(PanelState::Buy))
+                                .then_some(ViewMessage::BuySell(BuySellMessage::CreateNewAddress)),
+                        )
+                        .width(iced::Length::Fill)
+                }))
+                .push_maybe(matches!(self.state, Some(PanelState::Sell)).then(|| {
+                    ui_button::secondary(Some(globe_icon()), "Start Widget Session")
+                        .on_press(ViewMessage::BuySell(BuySellMessage::CreateSession))
+                        .width(iced::Length::Fill)
+                })),
         };
 
         column

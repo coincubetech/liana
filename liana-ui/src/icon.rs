@@ -59,6 +59,10 @@ pub fn bitcoin_icon() -> Text<'static> {
     bootstrap_icon('\u{F635}')
 }
 
+pub fn dollar_icon() -> Text<'static> {
+    bootstrap_icon('\u{F636}')
+}
+
 pub fn globe_icon<'a>() -> Text<'a> {
     bootstrap_icon('\u{F91B}')
 }

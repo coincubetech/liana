@@ -71,8 +71,15 @@ fn init_webview() -> WebView<iced_webview::Ultralight, WebviewMessage> {
     WebView::new().on_create_view(crate::app::state::buysell::WebviewMessage::Created)
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum PanelState {
+    Buy,
+    Sell,
+}
+
 pub struct BuySellPanel {
     // TODO: Detect country and currency using ip-api.com, with drop-down for manual selection
+    pub state: Option<PanelState>,
     pub error: Option<String>,
     pub network: bitcoin::Network,
 
@@ -84,10 +91,7 @@ pub struct BuySellPanel {
     pub meld_client: MeldClient,
 
     #[cfg(any(feature = "dev-onramp", feature = "dev-meld"))]
-    pub addresses: Vec<LabelledAddress>,
-
-    #[cfg(any(feature = "dev-onramp", feature = "dev-meld"))]
-    pub picked_address: Option<usize>,
+    pub generated_address: Option<LabelledAddress>,
 
     // Ultralight webview component for Meld widget integration with performance optimizations
     #[cfg(feature = "webview")]
@@ -113,6 +117,7 @@ impl BuySellPanel {
         data_dir: crate::dir::LianaDirectory,
     ) -> Self {
         Self {
+            state: None,
             error: None,
             network,
 
@@ -124,10 +129,7 @@ impl BuySellPanel {
             meld_client: MeldClient::new(),
 
             #[cfg(any(feature = "dev-onramp", feature = "dev-meld"))]
-            addresses: Vec::new(),
-
-            #[cfg(any(feature = "dev-onramp", feature = "dev-meld"))]
-            picked_address: None,
+            generated_address: None,
 
             #[cfg(feature = "webview")]
             webview: None,
@@ -166,36 +168,6 @@ impl BuySellPanel {
 }
 
 impl State for BuySellPanel {
-    fn reload(
-        &mut self,
-        daemon: Arc<dyn Daemon + Sync + Send>,
-        _wallet: Arc<app::wallet::Wallet>,
-    ) -> Task<Message> {
-        Task::perform(
-            async move { daemon.list_revealed_addresses(false, true, 50, None).await },
-            |res| match res {
-                Ok(out) => {
-                    let addresses = out
-                        .addresses
-                        .into_iter()
-                        .map(|a| LabelledAddress {
-                            address: a.address,
-                            index: a.index,
-                            label: a.label,
-                        })
-                        .collect();
-
-                    Message::View(ViewMessage::BuySell(BuySellMessage::LoadedAddresses(
-                        addresses,
-                    )))
-                }
-                Err(err) => Message::View(ViewMessage::BuySell(BuySellMessage::SessionError(
-                    err.to_string(),
-                ))),
-            },
-        )
-    }
-
     fn view<'a>(&'a self, cache: &'a Cache) -> Element<'a, ViewMessage> {
         let inner = view::dashboard(&app::Menu::BuySell, cache, None, self.view());
 
@@ -232,8 +204,8 @@ impl State for BuySellPanel {
 
                 return Task::none();
             }
-            Message::View(ViewMessage::Select(index)) => {
-                let Some(la) = self.addresses.get(index) else {
+            Message::View(ViewMessage::Select(_)) => {
+                let Some(la) = &self.generated_address else {
                     return Task::none();
                 };
 
@@ -247,8 +219,8 @@ impl State for BuySellPanel {
 
                 return Task::none();
             }
-            Message::View(ViewMessage::ShowQrCode(index)) => {
-                let Some(la) = self.addresses.get(index) else {
+            Message::View(ViewMessage::ShowQrCode(_)) => {
+                let Some(la) = &self.generated_address else {
                     return Task::none();
                 };
 
@@ -271,6 +243,7 @@ impl State for BuySellPanel {
         };
 
         match message {
+            BuySellMessage::SetPanelState(state) => self.state = Some(state),
             #[cfg(not(feature = "webview"))]
             BuySellMessage::LoginUsernameChanged(v) => {
                 self.set_login_username(v);
@@ -566,7 +539,7 @@ impl State for BuySellPanel {
                     async move { daemon.get_new_address().await },
                     |res| match res {
                         Ok(out) => Message::View(ViewMessage::BuySell(
-                            BuySellMessage::PickedAddress(LabelledAddress {
+                            BuySellMessage::AddressCreated(LabelledAddress {
                                 address: out.address,
                                 index: out.derivation_index,
                                 label: Some("new.buysell".to_string()),
@@ -578,42 +551,32 @@ impl State for BuySellPanel {
                     },
                 )
             }
-            BuySellMessage::LoadedAddresses(addresses) => self.addresses = addresses,
-            BuySellMessage::PickedAddress(la) => {
-                let find = self
-                    .addresses
-                    .iter()
-                    .enumerate()
-                    .find(|(.., addr)| *addr == &la);
-
-                match find {
-                    Some((index, ..)) => self.picked_address = Some(index),
-                    None => {
-                        self.picked_address = Some(self.addresses.len());
-                        self.addresses.push(la.clone());
-                    }
-                }
-            }
-            BuySellMessage::ClearCurrentAddress => {
-                self.picked_address = None;
+            BuySellMessage::AddressCreated(addresses) => self.generated_address = Some(addresses),
+            BuySellMessage::ResetWidget => {
+                self.generated_address = None;
+                self.state = None;
+                self.error = None;
 
                 if let Some(page) = self.active_page.take() {
                     return self
                         .webview
-                        .get_or_insert_with(init_webview)
+                        .as_mut()
+                        .expect("webview should exist at this point")
                         .update(WebviewAction::CloseView(page))
                         .map(map_webview_message_static);
                 };
+
+                self.webview = None;
             }
 
             #[cfg(feature = "dev-onramp")]
             BuySellMessage::CreateSession => {
-                let Some(idx) = &self.picked_address else {
+                let Some(addr) = &self.generated_address else {
                     return Task::none();
                 };
 
                 // TODO: infer currency from user ip
-                let LabelledAddress { address, .. } = &self.addresses[*idx];
+                let LabelledAddress { address, .. } = addr;
                 let fiat_currency = "USD";
 
                 let Some(onramper_url) =
@@ -715,7 +678,8 @@ impl State for BuySellPanel {
             BuySellMessage::ViewTick(id) => {
                 return self
                     .webview
-                    .get_or_insert_with(init_webview)
+                    .as_mut()
+                    .expect("webview should exist at this point")
                     .update(WebviewAction::Update(id))
                     .map(map_webview_message_static);
             }
@@ -723,7 +687,8 @@ impl State for BuySellPanel {
             BuySellMessage::WebviewAction(action) => {
                 return self
                     .webview
-                    .get_or_insert_with(init_webview)
+                    .as_mut()
+                    .expect("webview should exist at this point")
                     .update(action)
                     .map(map_webview_message_static);
             }
@@ -749,7 +714,11 @@ impl State for BuySellPanel {
                 self.active_page = Some(id);
 
                 if let Some(id) = og {
-                    let webview = self.webview.get_or_insert_with(init_webview);
+                    let webview = self
+                        .webview
+                        .as_mut()
+                        .expect("webview should exist at this point");
+
                     return webview
                         .update(WebviewAction::CloseView(id))
                         .map(map_webview_message_static);
