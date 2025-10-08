@@ -571,16 +571,20 @@ impl State for BuySellPanel {
 
             #[cfg(feature = "dev-onramp")]
             BuySellMessage::CreateSession => {
-                let Some(addr) = &self.generated_address else {
-                    return Task::none();
+                let address = self
+                    .generated_address
+                    .as_ref()
+                    .map(|a| a.address.to_string());
+                let mode = match self.state.expect("`state` should be set at this point") {
+                    PanelState::Buy => "buy",
+                    PanelState::Sell => "sell",
                 };
 
                 // TODO: infer currency from user ip
-                let LabelledAddress { address, .. } = addr;
                 let fiat_currency = "USD";
 
                 let Some(onramper_url) =
-                    onramper::create_widget_url(&fiat_currency, &address.to_string())
+                    onramper::create_widget_url(&fiat_currency, address.as_deref(), mode)
                 else {
                     self.error = Some("Onramper API key not set as an environment variable (ONRAMPER_API_KEY) at compile time".to_string());
                     return Task::none();

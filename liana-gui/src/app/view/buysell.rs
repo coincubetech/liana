@@ -52,7 +52,7 @@ impl BuySellPanel {
                 })
                 .flatten();
 
-            let enable_webview = self.generated_address.is_some() && self.active_page.is_some();
+            let webview_active = self.active_page.is_some();
             let column = Column::new()
                 // COINCUBE branding
                 .push(
@@ -70,10 +70,10 @@ impl BuySellPanel {
                                 .spacing(2),
                         )
                         .push_maybe({
-                            enable_webview.then(|| Space::with_width(Length::Fixed(25.0)))
+                            webview_active.then(|| Space::with_width(Length::Fixed(25.0)))
                         })
                         .push_maybe({
-                            enable_webview.then(|| {
+                            webview_active.then(|| {
                                 ui_button::secondary(Some(reload_icon()), "Reset Widget")
                                     .on_press(ViewMessage::BuySell(BuySellMessage::ResetWidget))
                             })
@@ -91,7 +91,7 @@ impl BuySellPanel {
                         .is_some()
                         .then(|| Space::with_height(Length::Fixed(20.0))),
                 )
-                .push_maybe((!enable_webview).then(|| self.form_view()));
+                .push_maybe((!webview_active).then(|| self.form_view()));
 
             #[cfg(feature = "webview")]
             let column = column.push({
