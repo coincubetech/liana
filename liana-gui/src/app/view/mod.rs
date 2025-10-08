@@ -24,7 +24,7 @@ pub use message::*;
 use warning::warn;
 
 use iced::{
-    widget::{column, responsive, row, scrollable, Space},
+    widget::{container, responsive, row, scrollable, Space},
     Length,
 };
 
@@ -176,13 +176,13 @@ pub fn sidebar<'a>(menu: &Menu, cache: &'a Cache) -> Container<'a, Message> {
     Container::new(
         Column::new()
             .push(
+                Container::new(liana_logotype_raster().width(Length::Fixed(120.0)))
+                    .padding(10)
+                    .align_x(iced::Alignment::Center)
+                    .width(Length::Fill),
+            )
+            .push(
                 Column::new()
-                    .push(
-                        Container::new(liana_logotype_raster().width(Length::Fixed(120.0)))
-                            .padding(10)
-                            .align_x(iced::Alignment::Center)
-                            .width(Length::Fill),
-                    )
                     .push(home_button)
                     .push(spend_button)
                     .push(receive_button)
@@ -199,7 +199,7 @@ pub fn sidebar<'a>(menu: &Menu, cache: &'a Cache) -> Container<'a, Message> {
                             None::<Row<'_, Message>>
                         }
                     })
-                    .height(Length::Fill),
+                    .height(Length::Fill)
             )
             .push(
                 Container::new(
@@ -401,7 +401,7 @@ pub fn dashboard<'a, T: Into<Element<'a, Message>>>(
                     small_sidebar(menu, cache).height(Length::Fill).into()
                 }
             }))
-            .width(Length::FillPortion(20)),
+            .width(Length::FillPortion(2)),
         )
         .push(
             Column::new()
@@ -409,19 +409,18 @@ pub fn dashboard<'a, T: Into<Element<'a, Message>>>(
                 .push(
                     Container::new(
                         scrollable(row!(
-                            Space::with_width(Length::FillPortion(1)),
-                            column!(Space::with_height(Length::Fixed(150.0)), content.into())
-                                .width(Length::FillPortion(8))
-                                .max_width(1500),
-                            Space::with_width(Length::FillPortion(1)),
+                            Space::with_width(Length::FillPortion(2)),
+                            container(content.into()).width(Length::FillPortion(5)),
+                            Space::with_width(Length::FillPortion(2)),
                         ))
                         .on_scroll(|w| Message::Scroll(w.absolute_offset().y)),
                     )
-                    .center_x(Length::Fill)
+                    .align_x(iced::Alignment::Center)
+                    .align_y(iced::Alignment::Center)
                     .style(theme::container::background)
                     .height(Length::Fill),
                 )
-                .width(Length::FillPortion(130)),
+                .width(Length::FillPortion(13)),
         )
         .width(Length::Fill)
         .height(Length::Fill)

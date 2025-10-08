@@ -132,15 +132,15 @@ impl State for ReceivePanel {
             ),
         );
 
-        match &self.modal {
-            Modal::VerifyAddress(m) => modal::Modal::new(content, m.view())
-                .on_blur(Some(view::Message::Close))
-                .into(),
-            Modal::ShowQrCode(m) => modal::Modal::new(content, m.view())
-                .on_blur(Some(view::Message::Close))
-                .into(),
-            Modal::None => content,
-        }
+        let inner = match &self.modal {
+            Modal::VerifyAddress(m) => m.view(),
+            Modal::ShowQrCode(m) => m.view(),
+            Modal::None => return content,
+        };
+
+        modal::Modal::new(content, inner)
+            .on_blur(Some(view::Message::Close))
+            .into()
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -356,7 +356,7 @@ impl VerifyAddressModal {
 }
 
 impl VerifyAddressModal {
-    fn view(&self) -> Element<'_, view::Message> {
+    pub fn view(&self) -> Element<'_, view::Message> {
         view::receive::verify_address_modal(
             self.warning.as_ref(),
             &self.hws.list,
@@ -429,7 +429,7 @@ impl ShowQrCodeModal {
             })
     }
 
-    fn view(&self) -> Element<'_, view::Message> {
+    pub fn view(&self) -> Element<'_, view::Message> {
         view::receive::qr_modal(&self.qr_code, &self.address)
     }
 }

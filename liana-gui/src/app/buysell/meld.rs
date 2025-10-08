@@ -6,43 +6,33 @@ use std::fmt;
 const MELD_API_BASE_URL: &str = "https://api-sb.meld.io/crypto/session/widget";
 const MELD_AUTH_HEADER: &str = "BASIC WePYLDhjQ9xBCsedwgRGm5:3Jg4JnemxqoBPHTbHtcMuszbhkGHQmh";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MeldSessionRequest {
-    #[serde(rename = "sessionData")]
-    pub session_data: SessionData,
-    #[serde(rename = "sessionType")]
-    pub session_type: String,
-    #[serde(rename = "externalCustomerId")]
-    pub external_customer_id: String,
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeldSessionRequest<'a> {
+    pub session_data: SessionData<'a>,
+    pub session_type: &'a str,
+    pub external_customer_id: &'a str,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionData {
-    #[serde(rename = "walletAddress")]
-    pub wallet_address: String,
-    #[serde(rename = "countryCode")]
-    pub country_code: String,
-    #[serde(rename = "sourceCurrencyCode")]
-    pub source_currency_code: String,
-    #[serde(rename = "sourceAmount")]
-    pub source_amount: String,
-    #[serde(rename = "destinationCurrencyCode")]
-    pub destination_currency_code: String,
-    #[serde(rename = "serviceProvider")]
-    pub service_provider: String,
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionData<'a> {
+    pub wallet_address: &'a str,
+    pub country_code: &'a str,
+    pub source_currency_code: &'a str,
+    pub source_amount: &'a str,
+    pub destination_currency_code: &'a str,
+    pub service_provider: &'a str,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MeldSessionResponse {
-    #[serde(rename = "customerId")]
     pub customer_id: Option<String>,
-    #[serde(rename = "externalCustomerId")]
     pub external_customer_id: Option<String>,
-    #[serde(rename = "externalSessionId")]
     pub external_session_id: Option<String>,
     pub id: String,
     pub token: Option<String>,
-    #[serde(rename = "widgetUrl")]
     pub widget_url: String,
 }
 
@@ -91,22 +81,13 @@ impl MeldClient {
 
     pub async fn create_widget_session(
         &self,
-        wallet_address: String,
-        country_code: String,
-        source_amount: String,
+        wallet_address: &str,
+        country_code: &str,
+        source_amount: &str,
         service_provider: ServiceProvider,
         network: liana::miniscript::bitcoin::Network,
-    ) -> Result<MeldSessionResponse, MeldError> {
-        // For now, always use "BTC" as shown in your working example
-        // TODO: Investigate why BTC_TESTNET might be causing issues
-        let destination_currency = "BTC";
-
-        // Debug logging to see what we're sending
-        tracing::info!(
-            "Creating Meld session with network: {:?}, currency: {}",
-            network,
-            destination_currency
-        );
+    ) -> Result<String, MeldError> {
+        tracing::info!("Creating Meld session with network: {:?}", network,);
 
         // Generate unique customer ID for each request to ensure fresh sessions
         let timestamp = std::time::SystemTime::now()
@@ -119,21 +100,18 @@ impl MeldClient {
             session_data: SessionData {
                 wallet_address,
                 country_code,
-                source_currency_code: "USD".to_string(),
+                source_currency_code: "USD",
                 source_amount,
-                destination_currency_code: destination_currency.to_string(),
-                service_provider: service_provider.as_str().to_string(),
+                destination_currency_code: "BTC",
+                service_provider: service_provider.as_str(),
             },
-            session_type: "BUY".to_string(),
-            external_customer_id: unique_customer_id,
+            session_type: "BUY",
+            external_customer_id: &unique_customer_id,
         };
 
         // Debug logging
         tracing::info!("Sending request to: {}", MELD_API_BASE_URL);
-        tracing::info!(
-            "Request body: {}",
-            serde_json::to_string_pretty(&request).unwrap_or_default()
-        );
+        tracing::info!("Request body: {:?}", &request);
 
         let response = self
             .client
@@ -148,7 +126,7 @@ impl MeldClient {
             let session_response: MeldSessionResponse = response.json().await?;
             tracing::info!("Meld API response: {:?}", session_response);
 
-            Ok(session_response)
+            Ok(session_response.widget_url)
         } else {
             #[derive(Deserialize, Debug)]
             struct MeldErrorMessageExtract {

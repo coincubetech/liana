@@ -121,7 +121,7 @@ pub fn receive<'a>(
                 }),
         )
         .push(text("Always generate a new address for each deposit."))
-        .push(
+        .push({
             Row::new()
                 .spacing(10)
                 .push(addresses.iter().enumerate().rev().fold(
@@ -131,8 +131,8 @@ pub fn receive<'a>(
                         addresses_count += 1;
                         col.push(address_card(i, address, labels, labels_editing))
                     },
-                )),
-        )
+                ))
+        })
         .push_maybe(
             (!prev_addresses.is_empty()).then_some(
                 Container::new(
