@@ -9,6 +9,9 @@ authors = ["Edouard Paris <m@edouard.paris>"]
 edition = "2018"
 resolver = "2"
 
+[package.metadata.winres]
+LegalCopyright = "Copyright © 2025"
+
 [[bin]]
 name = "coincube-vault"
 path = "src/main.rs"
