@@ -103,6 +103,7 @@ pub enum SettingsMessage {
     EditWalletSettings,
     ImportExportSection,
     ExportEncryptedDescriptor,
+    ExportPlaintextDescriptor,
     ExportTransactions,
     ExportLabels,
     ExportWallet,
