@@ -17,6 +17,8 @@ release_assets
 
 .vscode
 liana-gui/default
+default
+
 contrib/release/macos/certificates.p12
 contrib/release/macos/Vault.icns
 contrib/release/wix/Vault.ico

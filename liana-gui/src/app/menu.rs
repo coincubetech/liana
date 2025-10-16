@@ -1,4 +1,5 @@
 use liana::miniscript::bitcoin::{OutPoint, Txid};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Menu {
     Home,
@@ -13,7 +14,8 @@ pub enum Menu {
     Recovery,
     RefreshCoins(Vec<OutPoint>),
     PsbtPreSelected(Txid),
-    BuySell, //(Option<AccountInfo>),
+    #[cfg(feature = "buysell")]
+    BuySell,
 }
 
 /// Pre-selectable settings options.

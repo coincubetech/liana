@@ -45,10 +45,12 @@ impl BuySellPanel {
                 .active_page
                 .as_ref()
                 .map(|v| {
-                    self.webview.as_ref().map(|s| {
+                    let view = self.webview.as_ref().map(|s| {
                         s.view(*v)
                             .map(|a| ViewMessage::BuySell(BuySellMessage::WebviewAction(a)))
-                    })
+                    });
+
+                    view
                 })
                 .flatten();
 

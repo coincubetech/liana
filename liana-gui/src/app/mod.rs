@@ -28,8 +28,7 @@ pub use config::Config;
 pub use message::Message;
 
 use state::{
-    BuySellPanel, CoinsPanel, CreateSpendPanel, Home, PsbtsPanel, ReceivePanel, State,
-    TransactionsPanel,
+    CoinsPanel, CreateSpendPanel, Home, PsbtsPanel, ReceivePanel, State, TransactionsPanel,
 };
 use wallet::{sync_status, SyncStatus};
 
@@ -60,7 +59,7 @@ struct Panels {
     create_spend: CreateSpendPanel,
     settings: SettingsState,
     #[cfg(feature = "buysell")]
-    buy_sell: BuySellPanel,
+    buy_sell: state::BuySellPanel,
 }
 
 impl Panels {
@@ -114,7 +113,7 @@ impl Panels {
                 config.clone(),
             ),
             #[cfg(feature = "buysell")]
-            buy_sell: BuySellPanel::new(cache.network, wallet.clone(), data_dir),
+            buy_sell: state::BuySellPanel::new(cache.network, wallet.clone(), data_dir),
         }
     }
 

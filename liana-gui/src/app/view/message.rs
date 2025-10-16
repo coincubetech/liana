@@ -1,14 +1,13 @@
 use crate::{
-    app::{
-        menu::Menu,
-        state::buysell::{LabelledAddress, PanelState},
-        view::FiatAmountConverter,
-    },
+    app::{menu::Menu, view::FiatAmountConverter},
     export::ImportExportMessage,
     node::bitcoind::RpcAuthType,
     services::fiat::{Currency, PriceSource},
 };
 use liana::miniscript::bitcoin::{bip32::Fingerprint, Address, OutPoint};
+
+#[cfg(feature = "buysell")]
+use crate::app::state::buysell::{LabelledAddress, PanelState};
 
 pub trait Close {
     fn close() -> Self;
