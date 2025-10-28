@@ -31,10 +31,13 @@ pub fn create_widget_url(
         .replace("{{DEFAULT_FIAT}}", currency)
         .replace("{{NETWORK}}", "bitcoin");
 
-    // insert address if any
+    // insert address if provided, otherwise remove the wallets parameter entirely
     Ok(match address {
         Some(a) => url.replace("{{ADDRESS}}", a),
-        None => url,
+        None => {
+            // Remove the wallets parameter when no address is provided (e.g., for sell mode)
+            url.replace("&wallets=btc:{{ADDRESS}}", "")
+        }
     })
 }
 
@@ -69,5 +72,8 @@ mod tests {
         assert!(url.contains("sell_onlyCryptoNetworks=bitcoin"));
         assert!(url.contains("mode=sell"));
         assert!(url.contains("defaultFiat=EUR"));
+        // Ensure no placeholder or wallets parameter remains when address is None
+        assert!(!url.contains("{{ADDRESS}}"));
+        assert!(!url.contains("wallets="));
     }
 }
