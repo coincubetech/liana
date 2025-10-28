@@ -178,10 +178,23 @@ impl State for BuySellPanel {
             }
 
             BuySellMessage::CountryDetected(country_name, iso_code) => {
-                tracing::info!("country = {}, iso_code = {}", country_name, iso_code);
+                tracing::info!(
+                    "🌍 [GEOLOCATION] Country detected: '{}', ISO: '{}'",
+                    country_name,
+                    iso_code
+                );
 
-                self.detected_country_name = Some(country_name);
-                self.detected_country_iso = Some(iso_code);
+                // Handle empty country detection
+                if country_name.is_empty() || iso_code.is_empty() {
+                    tracing::warn!(
+                        "🌍 [GEOLOCATION] Empty country detection, defaulting to US"
+                    );
+                    self.detected_country_name = Some("United States".to_string());
+                    self.detected_country_iso = Some("US".to_string());
+                } else {
+                    self.detected_country_name = Some(country_name);
+                    self.detected_country_iso = Some(iso_code);
+                }
             }
 
             BuySellMessage::LastNameChanged(v) => {
@@ -516,15 +529,28 @@ impl State for BuySellPanel {
             BuySellMessage::SetFlowState(state) => self.flow_state = state,
 
             BuySellMessage::ResetWidget => {
+                // Close the active view first if it exists
+                let close_task = if let Some(view_id) = self.active_page.take() {
+                    if let Some(webview) = self.webview.as_mut() {
+                        webview
+                            .update(WebviewAction::CloseView(view_id))
+                            .map(map_webview_message_static)
+                    } else {
+                        Task::none()
+                    }
+                } else {
+                    Task::none()
+                };
+
+                // Clear all state
                 self.flow_state = BuySellFlowState::Initialization;
                 self.buy_or_sell = None;
                 self.error = None;
                 self.generated_address = None;
+                self.webview = None;
+                self.session_url = None;
 
-                // close webview
-                return Task::done(Message::View(ViewMessage::BuySell(
-                    BuySellMessage::CloseWebview,
-                )));
+                return close_task;
             }
 
             BuySellMessage::CreateNewAddress => {
@@ -679,6 +705,8 @@ impl State for BuySellPanel {
                     .map(map_webview_message_static);
             }
             BuySellMessage::WebviewOpenUrl(url) => {
+                tracing::info!("🌐 [WEBVIEW] Opening URL: {}", url);
+                
                 let webview = self.webview.get_or_insert_with(init_webview);
 
                 // Load URL into Ultralight webview
@@ -686,10 +714,12 @@ impl State for BuySellPanel {
 
                 // If there's an active page, close it first before creating new one
                 if let Some(previous) = self.active_page.take() {
+                    tracing::info!("🌐 [WEBVIEW] Closing previous view: {}", previous);
                     let delete_previous = webview
                         .update(WebviewAction::CloseView(previous))
                         .map(map_webview_message_static);
 
+                    tracing::info!("🌐 [WEBVIEW] Creating new view with URL");
                     return delete_previous.chain(
                         webview
                             .update(WebviewAction::CreateView(PageType::Url(url)))
@@ -698,6 +728,7 @@ impl State for BuySellPanel {
                 }
 
                 // Create new view on the same webview instance
+                tracing::info!("🌐 [WEBVIEW] Creating first view with URL");
                 return webview
                     .update(WebviewAction::CreateView(PageType::Url(url)))
                     .map(map_webview_message_static);

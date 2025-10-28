@@ -7,7 +7,7 @@ use iced_webview::{advanced::WebView, Ultralight};
 use liana::miniscript::bitcoin::{self, Network};
 use liana_ui::{
     color,
-    component::{button as ui_button, form, text::text},
+    component::{button as ui_button, form, text as ui_text, text::text},
     icon::*,
     theme,
     widget::*,
@@ -133,6 +133,12 @@ impl BuySellPanel {
             let iso_code = self.detected_country_iso.as_deref().unwrap_or("US");
             let currency = crate::services::fiat::currency_for_country(&iso_code).to_string();
 
+            tracing::info!(
+                "🌍 [ONRAMPER] Preparing session - ISO: {}, Currency: {}",
+                iso_code,
+                currency
+            );
+
             // prepare parameters
             let address = self
                 .generated_address
@@ -145,13 +151,22 @@ impl BuySellPanel {
                 Some(app::view::buysell::panel::BuyOrSell::Sell) => "sell",
             };
 
+            tracing::info!(
+                "🌍 [ONRAMPER] Mode: {}, Address: {:?}",
+                mode,
+                address
+            );
+
             match onramper::create_widget_url(&currency, address.as_deref(), &mode) {
-                Ok(url) => Task::batch([
-                    Task::done(BuySellMessage::WebviewOpenUrl(url)),
-                    Task::done(BuySellMessage::SetFlowState(BuySellFlowState::Onramper)),
-                ]),
+                Ok(url) => {
+                    tracing::info!("🌍 [ONRAMPER] Generated URL: {}", url);
+                    Task::batch([
+                        Task::done(BuySellMessage::WebviewOpenUrl(url)),
+                        Task::done(BuySellMessage::SetFlowState(BuySellFlowState::Onramper)),
+                    ])
+                }
                 Err(error) => {
-                    tracing::error!("🌍 [ONRAMPER] Error: {}", error);
+                    tracing::error!("🌍 [ONRAMPER] Error creating URL: {}", error);
 
                     Task::done(BuySellMessage::SessionError(error))
                 }
@@ -196,17 +211,13 @@ impl BuySellPanel {
                 .push(
                     Row::new()
                         .push(
-                            Container::new(liana_ui::icon::bitcoin_icon().size(24))
-                                .style(theme::container::border)
-                                .padding(10),
+                            Row::new()
+                                .push(ui_text::h4_bold("COIN").color(color::ORANGE))
+                                .push(ui_text::h4_bold("CUBE").color(color::WHITE))
+                                .spacing(0),
                         )
-                        .push(Space::with_width(Length::Fixed(10.0)))
-                        .push(
-                            Column::new()
-                                .push(text("COINCUBE").size(16).color(color::ORANGE))
-                                .push(text("BUY/SELL").size(14).color(color::GREY_3))
-                                .spacing(2),
-                        )
+                        .push(Space::with_width(Length::Fixed(8.0)))
+                        .push(ui_text::h5_regular("BUY/SELL").color(color::GREY_3))
                         .push_maybe({
                             webview_active.then(|| Space::with_width(Length::Fixed(25.0)))
                         })
@@ -648,7 +659,7 @@ impl BuySellPanel {
         use liana_ui::component::button as ui_button;
         use liana_ui::component::text as ui_text;
         use liana_ui::component::text::text;
-        use liana_ui::icon::{globe_icon, previous_icon};
+        use liana_ui::icon::previous_icon;
 
         // Top bar with previous
         let top_bar = Row::new()
@@ -697,16 +708,6 @@ impl BuySellPanel {
             )
             .spacing(10)
             .align_x(Alignment::Center);
-
-        // Continue with Google (placeholder)
-        let google =
-            ui_button::secondary(Some(globe_icon()), "Continue with Google").width(Length::Fill);
-
-        // Divider "Or"
-        let divider = Row::new()
-            .push(Container::new(Space::with_height(Length::Fixed(1.0))).width(Length::Fill))
-            .push(text("  Or  ").color(color::GREY_3))
-            .push(Container::new(Space::with_height(Length::Fixed(1.0))).width(Length::Fill));
 
         let name_row = Row::new()
             .push(
@@ -781,10 +782,6 @@ impl BuySellPanel {
             .push(Space::with_height(Length::Fixed(30.0)))
             .push(title)
             .push(Space::with_height(Length::Fixed(20.0)))
-            .push(google)
-            .push(Space::with_height(Length::Fixed(10.0)))
-            .push(divider)
-            .push(Space::with_height(Length::Fixed(10.0)))
             .push(name_row)
             .push(Space::with_height(Length::Fixed(10.0)))
             .push(email)
