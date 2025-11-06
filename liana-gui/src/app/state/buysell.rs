@@ -3,10 +3,6 @@ use std::sync::Arc;
 
 // BankAccount and Beneficiary are used via fully qualified paths below
 
-use iced_webview::{
-    advanced::{Action as WebviewAction, WebView},
-    PageType,
-};
 use liana_ui::widget::Element;
 
 use crate::app::view::buysell::{BuySellFlowState, NativePage};
@@ -22,29 +18,6 @@ use crate::{
     daemon::Daemon,
 };
 
-#[derive(Debug, Clone)]
-pub enum WebviewMessage {
-    Action(iced_webview::advanced::Action),
-    Created(iced_webview::ViewId),
-}
-
-/// Map webview messages to main app messages (static version for Task::map)
-fn map_webview_message_static(webview_msg: WebviewMessage) -> Message {
-    match webview_msg {
-        WebviewMessage::Action(action) => {
-            Message::View(ViewMessage::BuySell(BuySellMessage::WebviewAction(action)))
-        }
-        WebviewMessage::Created(id) => {
-            Message::View(ViewMessage::BuySell(BuySellMessage::WebviewCreated(id)))
-        }
-    }
-}
-
-/// lazily initialize the webview to reduce latent memory usage
-fn init_webview() -> WebView<iced_webview::Ultralight, WebviewMessage> {
-    WebView::new().on_create_view(crate::app::state::buysell::WebviewMessage::Created)
-}
-
 impl State for BuySellPanel {
     fn view<'a>(&'a self, cache: &'a Cache) -> Element<'a, ViewMessage> {
         let inner = view::dashboard(&app::Menu::BuySell, cache, None, self.view());
@@ -58,25 +31,6 @@ impl State for BuySellPanel {
         liana_ui::widget::modal::Modal::new(inner, overlay)
             .on_blur(Some(ViewMessage::Close))
             .into()
-    }
-
-    fn reload(
-        &mut self,
-        _daemon: Arc<dyn Daemon + Sync + Send>,
-        _wallet: Arc<crate::app::wallet::Wallet>,
-    ) -> Task<Message> {
-        let locator = crate::services::geolocation::CachedGeoLocator::new_from_env();
-        Task::perform(
-            async move { locator.detect_country().await },
-            |result| match result {
-                Ok((country_name, iso_code)) => Message::View(ViewMessage::BuySell(
-                    BuySellMessage::CountryDetected(country_name, iso_code),
-                )),
-                Err(error) => {
-                    Message::View(ViewMessage::BuySell(BuySellMessage::SessionError(error)))
-                }
-            },
-        )
     }
 
     fn update(
@@ -178,23 +132,56 @@ impl State for BuySellPanel {
             }
 
             BuySellMessage::CountryDetected(country_name, iso_code) => {
-                tracing::info!(
-                    "🌍 [GEOLOCATION] Country detected: '{}', ISO: '{}'",
-                    country_name,
-                    iso_code
-                );
+                use crate::app::view::buysell::MavapayFlowState;
+                use crate::services::fiat::{
+                    mavapay_major_unit_for_country, mavapay_minor_unit_for_country,
+                    mavapay_supported,
+                };
+                use liana_ui::component::form;
+
+                tracing::info!("country = {}, iso_code = {}", country_name, iso_code);
 
                 // Handle empty country detection
                 if country_name.is_empty() || iso_code.is_empty() {
-                    tracing::warn!(
-                        "🌍 [GEOLOCATION] Empty country detection, defaulting to US"
-                    );
-                    self.detected_country_name = Some("United States".to_string());
-                    self.detected_country_iso = Some("US".to_string());
+                    tracing::warn!("🌍 [GEOLOCATION] Empty country detection");
+
+                    self.detected_country_name = None;
+                    self.detected_country_iso = None;
                 } else {
                     self.detected_country_name = Some(country_name);
-                    self.detected_country_iso = Some(iso_code);
+                    self.detected_country_iso = Some(iso_code.clone());
                 }
+
+                // If Mavapay country, immediately transition to AccountSelect
+                // Skip the Buy/Sell selection screen entirely for Mavapay users
+                if mavapay_supported(&iso_code) {
+                    let mut state = MavapayFlowState::new();
+
+                    // Set default currencies based on detected country
+                    state.mavapay_source_currency = form::Value {
+                        value: mavapay_minor_unit_for_country(&iso_code).to_string(),
+                        warning: None,
+                        valid: true,
+                    };
+                    state.mavapay_target_currency = form::Value {
+                        value: "BTCSAT".to_string(),
+                        warning: None,
+                        valid: true,
+                    };
+                    state.mavapay_settlement_currency = form::Value {
+                        value: mavapay_major_unit_for_country(&iso_code).to_string(),
+                        warning: None,
+                        valid: true,
+                    };
+
+                    return Task::done(Message::View(ViewMessage::BuySell(
+                        BuySellMessage::SetFlowState(BuySellFlowState::Mavapay(state)),
+                    )));
+                }
+                // For non-Mavapay countries, transition to Initialization to show Buy/Sell buttons
+                return Task::done(Message::View(ViewMessage::BuySell(
+                    BuySellMessage::SetFlowState(BuySellFlowState::Initialization),
+                )));
             }
 
             BuySellMessage::LastNameChanged(v) => {
@@ -525,32 +512,25 @@ impl State for BuySellPanel {
             }
 
             // for creating new addresses for buysell coin reception
-            BuySellMessage::SetBuyOrSell(bs) => self.buy_or_sell = Some(bs),
+            // This is now only used by Onramper flow (non-Mavapay countries)
+            // Mavapay users never see the Buy/Sell buttons - they go directly to AccountSelect
+            BuySellMessage::SetBuyOrSell(bs) => {
+                self.buy_or_sell = Some(bs);
+            }
             BuySellMessage::SetFlowState(state) => self.flow_state = state,
 
             BuySellMessage::ResetWidget => {
-                // Close the active view first if it exists
-                let close_task = if let Some(view_id) = self.active_page.take() {
-                    if let Some(webview) = self.webview.as_mut() {
-                        webview
-                            .update(WebviewAction::CloseView(view_id))
-                            .map(map_webview_message_static)
-                    } else {
-                        Task::none()
-                    }
-                } else {
-                    Task::none()
-                };
+                // Clear webview state first
+                if let Some(wv) = self.active_webview.take() {
+                    self.webview_manager.clear_view(&wv);
+                }
 
                 // Clear all state
                 self.flow_state = BuySellFlowState::Initialization;
                 self.buy_or_sell = None;
                 self.error = None;
                 self.generated_address = None;
-                self.webview = None;
                 self.session_url = None;
-
-                return close_task;
             }
 
             BuySellMessage::CreateNewAddress => {
@@ -561,7 +541,7 @@ impl State for BuySellPanel {
                             BuySellMessage::AddressCreated(view::buysell::panel::LabelledAddress {
                                 address: out.address,
                                 index: out.derivation_index,
-                                label: Some("new.buysell".to_string()),
+                                label: None,
                             }),
                         )),
                         Err(err) => Message::View(ViewMessage::BuySell(
@@ -689,94 +669,75 @@ impl State for BuySellPanel {
             }
 
             // webview logic
-            BuySellMessage::ViewTick(id) => {
-                if let Some(wv) = self.webview.as_mut() {
-                    return wv
-                        .update(WebviewAction::Update(id))
-                        .map(map_webview_message_static);
-                }
-            }
-            BuySellMessage::WebviewAction(action) => {
-                return self
-                    .webview
-                    .as_mut()
-                    .expect("webview should exist at this point")
-                    .update(action)
-                    .map(map_webview_message_static);
-            }
+            BuySellMessage::WryMessage(msg) => self.webview_manager.update(msg),
             BuySellMessage::WebviewOpenUrl(url) => {
-                tracing::info!("🌐 [WEBVIEW] Opening URL: {}", url);
-                
-                let webview = self.webview.get_or_insert_with(init_webview);
-
-                // Load URL into Ultralight webview
                 self.session_url = Some(url.clone());
 
-                // If there's an active page, close it first before creating new one
-                if let Some(previous) = self.active_page.take() {
-                    tracing::info!("🌐 [WEBVIEW] Closing previous view: {}", previous);
-                    let delete_previous = webview
-                        .update(WebviewAction::CloseView(previous))
-                        .map(map_webview_message_static);
+                // extract the main window's raw_window_handle
+                return iced_wry::IcedWebviewManager::extract_window_id(None).map(|w| {
+                    Message::View(ViewMessage::BuySell(BuySellMessage::WryExtractedWindowId(
+                        w,
+                    )))
+                });
+            }
+            BuySellMessage::WryExtractedWindowId(id) => {
+                let mut attributes = iced_wry::wry::WebViewAttributes::default();
+                attributes.url = self.session_url.clone();
+                attributes.devtools = cfg!(debug_assertions);
+                attributes.incognito = true;
 
-                    tracing::info!("🌐 [WEBVIEW] Creating new view with URL");
-                    return delete_previous.chain(
-                        webview
-                            .update(WebviewAction::CreateView(PageType::Url(url)))
-                            .map(map_webview_message_static),
-                    );
+                let webview = self.webview_manager.new_webview(attributes, id);
+
+                if let Some(wv) = webview {
+                    self.active_webview = Some(wv)
+                } else {
+                    tracing::error!("Unable to instantiate wry webview")
                 }
-
-                // Create new view on the same webview instance
-                tracing::info!("🌐 [WEBVIEW] Creating first view with URL");
-                return webview
-                    .update(WebviewAction::CreateView(PageType::Url(url)))
-                    .map(map_webview_message_static);
             }
 
-            BuySellMessage::WebviewCreated(id) => {
-                tracing::info!("🌐 [LIANA] Activating Webview Page: {}", id);
-
-                // set active page to newly created view id
-                self.active_page = Some(id);
-            }
-            BuySellMessage::CloseWebview => {
-                if cfg!(debug_assertions) {
-                    tracing::info!("🌐 [LIANA] Closing webview - clearing state only");
-                }
-
-                // Just clear the state - don't try to close view or destroy webview
-                // The WebviewOpenUrl handler will close the old view when creating a new one
-                self.webview = None;
-                self.session_url = None;
-                self.active_page = None;
+            BuySellMessage::OpenExternalUrl(url) => {
+                return Task::done(Message::View(ViewMessage::OpenUrl(url)));
             }
         };
 
         Task::none()
     }
 
+    fn reload(
+        &mut self,
+        _daemon: Arc<dyn Daemon + Sync + Send>,
+        _wallet: Arc<crate::app::wallet::Wallet>,
+    ) -> Task<Message> {
+        let locator = crate::services::geolocation::CachedGeoLocator::new_from_env();
+        Task::perform(
+            async move { locator.detect_country().await },
+            |result| match result {
+                Ok((country_name, iso_code)) => Message::View(ViewMessage::BuySell(
+                    BuySellMessage::CountryDetected(country_name, iso_code),
+                )),
+                Err(error) => {
+                    Message::View(ViewMessage::BuySell(BuySellMessage::SessionError(error)))
+                }
+            },
+        )
+    }
+
     fn close(&mut self) -> Task<Message> {
-        Task::done(Message::View(ViewMessage::BuySell(
-            BuySellMessage::CloseWebview,
-        )))
+        if let Some(weak) = self.active_webview.as_ref() {
+            if let Some(strong) = std::sync::Weak::upgrade(&weak.webview) {
+                let _ = strong.set_visible(false);
+                let _ = strong.focus_parent();
+            }
+        }
+
+        // NOTE: messages returned from close are not handled by the current panel, but rather by the state containing the next panel?
+        Task::none()
     }
 
     fn subscription(&self) -> iced::Subscription<Message> {
-        use std::time::Duration;
-
-        if let Some(id) = self.active_page {
-            let interval = if cfg!(debug_assertions) {
-                Duration::from_millis(250)
-            } else {
-                Duration::from_millis(100)
-            };
-            return iced::time::every(interval)
-                .with(id)
-                .map(|(i, ..)| Message::View(ViewMessage::BuySell(BuySellMessage::ViewTick(i))));
-        }
-
-        iced::Subscription::none()
+        self.webview_manager
+            .subscription(std::time::Duration::from_millis(25))
+            .map(|m| Message::View(ViewMessage::BuySell(BuySellMessage::WryMessage(m))))
     }
 }
 
