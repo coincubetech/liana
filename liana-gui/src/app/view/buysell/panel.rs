@@ -94,7 +94,7 @@ impl BuySellPanel {
 
     /// Opens Onramper widget session (only called for non-Mavapay countries)
     /// Mavapay flow is now handled by SetBuyOrSell message handler
-    pub fn start_session(&mut self) -> iced::Task<BuySellMessage> {
+    pub fn start_session(&mut self, network: bitcoin::Network) -> iced::Task<BuySellMessage> {
         use crate::app::buysell::onramper;
 
         let Some(iso_code) = self.detected_country_iso.as_ref() else {
@@ -116,15 +116,7 @@ impl BuySellPanel {
             Some(BuyOrSell::Sell) => "sell",
         };
 
-        tracing::info!(
-            "🌍 [ONRAMPER] Preparing session - ISO: {}, Currency: {}",
-            iso_code,
-            currency
-        );
-
-        tracing::info!("🌍 [ONRAMPER] Mode: {}, Address: {:?}", mode, address);
-
-        match onramper::create_widget_url(&currency, address.as_deref(), &mode) {
+        match onramper::create_widget_url(&currency, address.as_deref(), &mode, network) {
             Ok(url) => {
                 tracing::info!("🌍 [ONRAMPER] Generated URL: {}", url);
                 Task::batch([
@@ -133,9 +125,8 @@ impl BuySellPanel {
                 ])
             }
             Err(error) => {
-                tracing::error!("🌍 [ONRAMPER] Error creating URL: {}", error);
-
-                Task::done(BuySellMessage::SessionError(error))
+                tracing::error!("🌍 [ONRAMPER] Error: {}", error);
+                Task::done(BuySellMessage::SessionError(error.to_string()))
             }
         }
     }
@@ -171,6 +162,7 @@ impl BuySellPanel {
 
         let column = {
             let column = Column::new()
+                .push(Space::with_height(150))
                 // COINCUBE branding
                 .push(
                     Row::new()
@@ -187,7 +179,7 @@ impl BuySellPanel {
                         })
                         .push_maybe({
                             webview_active.then(|| {
-                                ui_button::secondary(Some(cross_icon()), "Exit")
+                                ui_button::secondary(Some(arrow_back()), "Start Over")
                                     .on_press(ViewMessage::BuySell(BuySellMessage::ResetWidget))
                                     .width(iced::Length::Fixed(300.0))
                             })
@@ -221,7 +213,7 @@ impl BuySellPanel {
                         .push(v)
                         // Network display banner for Onramper flow
                         .push_maybe({
-                            onramper_active.then(|| Space::with_height(Length::Fixed(25.0)))
+                            onramper_active.then(|| Space::with_height(Length::Fixed(15.0)))
                         })
                         .push_maybe(onramper_active.then(|| {
                             let network_name = match self.network {
@@ -275,6 +267,7 @@ impl BuySellPanel {
             BuySellFlowState::Onramper => self.render_loading_onramper(),
         }
     }
+
     fn initialization_flow<'a>(&'a self) -> Column<'a, ViewMessage> {
         use iced::widget::scrollable;
         use liana_ui::component::{
