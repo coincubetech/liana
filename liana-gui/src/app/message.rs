@@ -66,6 +66,18 @@ pub enum Message {
     BroadcastModal(Result<HashSet<Txid>, Error>),
     RbfModal(Box<HistoryTransaction>, bool, Result<HashSet<Txid>, Error>),
     Export(ImportExportMessage),
+    #[cfg(feature = "breez")]
+    BreezInitialized(
+        Result<
+            (
+                std::sync::Arc<crate::app::breez::wallet::BreezWalletManager>,
+                tokio::sync::mpsc::UnboundedReceiver<crate::app::breez::events::BreezEvent>,
+            ),
+            crate::app::breez::BreezError,
+        >,
+    ),
+    #[cfg(feature = "breez")]
+    BreezEvent(crate::app::breez::events::BreezEvent),
 }
 
 impl From<ImportExportMessage> for Message {
@@ -88,3 +100,4 @@ impl From<FiatMessage> for Message {
         Message::Fiat(value)
     }
 }
+

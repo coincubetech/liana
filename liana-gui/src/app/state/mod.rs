@@ -1,7 +1,5 @@
-mod active;
 mod coins;
 pub mod export;
-mod global_home;
 mod label;
 mod psbt;
 mod psbts;
@@ -12,6 +10,9 @@ mod transactions;
 
 #[cfg(feature = "buysell")]
 pub mod buysell;
+
+#[cfg(feature = "breez")]
+pub mod activate;
 
 use std::convert::TryInto;
 use std::sync::Arc;
@@ -41,9 +42,7 @@ use crate::daemon::{
     Daemon,
 };
 use crate::utils::now;
-pub use active::{ActiveReceive, ActiveSend, ActiveSettings, ActiveTransactions};
 pub use coins::CoinsPanel;
-pub use global_home::GlobalHome;
 use label::LabelsEdited;
 pub use psbts::PsbtsPanel;
 pub use receive::ReceivePanel;
@@ -52,7 +51,7 @@ pub use spend::CreateSpendPanel;
 pub use transactions::TransactionsPanel;
 
 pub trait State {
-    fn view<'a>(&'a self, menu: &'a Menu, cache: &'a Cache) -> Element<'a, view::Message>;
+    fn view<'a>(&'a self, cache: &'a Cache) -> Element<'a, view::Message>;
     fn update(
         &mut self,
         _daemon: Arc<dyn Daemon + Sync + Send>,
@@ -204,7 +203,7 @@ impl Home {
 }
 
 impl State for Home {
-    fn view<'a>(&'a self, menu: &'a Menu, cache: &'a Cache) -> Element<'a, view::Message> {
+    fn view<'a>(&'a self, cache: &'a Cache) -> Element<'a, view::Message> {
         let converter = fiat_converter_for_wallet(&self.wallet, cache);
         if let Some((tx, output_index)) = &self.selected_event {
             view::home::payment_view(
@@ -216,7 +215,7 @@ impl State for Home {
             )
         } else {
             view::dashboard(
-                menu,
+                &Menu::Home,
                 cache,
                 None,
                 view::home::home_view(
@@ -647,3 +646,4 @@ mod tests {
         );
     }
 }
+

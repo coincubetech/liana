@@ -24,7 +24,7 @@ use lianad::{
 
 use crate::app;
 use crate::app::cache::DaemonCache;
-use crate::app::settings::{CubeSettings, WalletSettings};
+use crate::app::settings::WalletSettings;
 use crate::backup::Backup;
 use crate::dir::LianaDirectory;
 use crate::export::RestoreBackupError;
@@ -63,8 +63,7 @@ pub struct Loader {
     pub internal_bitcoind: Option<Bitcoind>,
     pub waiting_daemon_bitcoind: bool,
     pub backup: Option<Backup>,
-    pub wallet_settings: Option<WalletSettings>,
-    pub cube_settings: CubeSettings,
+    pub wallet_settings: WalletSettings,
     step: Step,
 }
 
@@ -124,20 +123,12 @@ impl Loader {
         network: bitcoin::Network,
         internal_bitcoind: Option<Bitcoind>,
         backup: Option<Backup>,
-        wallet_settings: Option<WalletSettings>,
-        cube_settings: CubeSettings,
+        wallet_settings: WalletSettings,
     ) -> (Self, Task<Message>) {
-        let task = if let Some(ref wallet) = wallet_settings {
-            let socket_path = datadir_path
-                .network_directory(network)
-                .lianad_data_directory(&wallet.wallet_id())
-                .lianad_rpc_socket_path();
-            Task::perform(connect(socket_path), Message::Loaded)
-        } else {
-            // No vault configured - loader will show setup screen
-            Task::none()
-        };
-        
+        let socket_path = datadir_path
+            .network_directory(network)
+            .lianad_data_directory(&wallet_settings.wallet_id())
+            .lianad_rpc_socket_path();
         (
             Loader {
                 network,
@@ -148,22 +139,17 @@ impl Loader {
                 internal_bitcoind,
                 waiting_daemon_bitcoind: false,
                 wallet_settings,
-                cube_settings,
                 backup,
             },
-            task,
+            Task::perform(connect(socket_path), Message::Loaded),
         )
     }
 
     fn start_bitcoind(&self) -> bool {
         if self.internal_bitcoind.is_some() {
             false
-        } else if let Some(wallet) = &self.wallet_settings {
-            if let Some(start) = wallet.start_internal_bitcoind {
-                start
-            } else {
-                self.gui_config.start_internal_bitcoind
-            }
+        } else if let Some(start) = self.wallet_settings.start_internal_bitcoind {
+            start
         } else {
             self.gui_config.start_internal_bitcoind
         }
@@ -174,16 +160,12 @@ impl Loader {
         daemon: Arc<dyn Daemon + Sync + Send>,
         info: GetInfoResult,
     ) -> Task<Message> {
-        // If no wallet is configured, this shouldn't be called
-        let wallet_settings = self.wallet_settings.clone()
-            .expect("wallet_settings must be Some when loading");
-        
         // If the node is not Bitcoin Core or otherwise the wallet was previously synced (blockheight > 0),
         // load the application directly.
         if daemon.backend().node_type() != Some(NodeType::Bitcoind) || info.block_height > 0 {
             return Task::perform(
                 load_application(
-                    wallet_settings,
+                    self.wallet_settings.clone(),
                     daemon,
                     info,
                     self.datadir_path.clone(),
@@ -221,8 +203,6 @@ impl Loader {
                 Error::Daemon(DaemonError::ClientNotSupported)
                 | Error::Daemon(DaemonError::RpcSocket(Some(ErrorKind::ConnectionRefused), _))
                 | Error::Daemon(DaemonError::RpcSocket(Some(ErrorKind::NotFound), _)) => {
-                    let wallet_settings = self.wallet_settings.clone()
-                        .expect("wallet_settings must be Some when starting daemon");
                     self.step = Step::StartingDaemon;
                     self.daemon_started = true;
                     self.waiting_daemon_bitcoind = true;
@@ -231,7 +211,7 @@ impl Loader {
                             self.datadir_path.clone(),
                             self.start_bitcoind(),
                             self.network,
-                            wallet_settings,
+                            self.wallet_settings.clone(),
                         ),
                         Message::Started,
                     );
@@ -279,11 +259,9 @@ impl Loader {
                 match res {
                     Ok(info) => {
                         if (info.sync - 1.0_f64).abs() < f64::EPSILON {
-                            let wallet_settings = self.wallet_settings.clone()
-                                .expect("wallet_settings must be Some when syncing");
                             return Task::perform(
                                 load_application(
-                                    wallet_settings,
+                                    self.wallet_settings.clone(),
                                     daemon.clone(),
                                     info,
                                     self.datadir_path.clone(),
@@ -338,7 +316,6 @@ impl Loader {
                     self.internal_bitcoind.clone(),
                     self.backup.clone(),
                     self.wallet_settings.clone(),
-                    self.cube_settings.clone(),
                 );
                 *self = loader;
                 cmd
@@ -471,9 +448,8 @@ pub async fn load_application(
             ..Default::default()
         },
         fiat_price: None,
-        vault_expanded: false,
-        active_expanded: false,
-        has_vault: true,
+        #[cfg(feature = "breez")]
+        activate_expanded: false,
     };
 
     Ok((Arc::new(wallet), cache, daemon, internal_bitcoind, backup))
@@ -483,7 +459,6 @@ pub async fn load_application(
 pub enum ViewMessage {
     Retry,
     SwitchNetwork,
-    SetupVault,
 }
 
 pub fn view(step: &Step) -> Element<ViewMessage> {

@@ -8,6 +8,8 @@ use crate::{
 
 #[cfg(feature = "buysell")]
 use crate::services::mavapay::{PriceResponse, QuoteResponse, Transaction};
+#[cfg(feature = "breez")]
+use breez_sdk_liquid;
 use liana::miniscript::bitcoin::{bip32::Fingerprint, Address, OutPoint};
 
 pub trait Close {
@@ -20,9 +22,6 @@ pub enum Message {
     Reload,
     Clipboard(String),
     Menu(Menu),
-    ToggleVault,
-    ToggleActive,
-    SetupVault,
     Close,
     Select(usize),
     SelectPayment(OutPoint),
@@ -35,6 +34,10 @@ pub enum Message {
     ImportSpend(ImportSpendMessage),
     #[cfg(feature = "buysell")]
     BuySell(BuySellMessage),
+    #[cfg(feature = "breez")]
+    Activate(ActivateMessage),
+    #[cfg(feature = "breez")]
+    ToggleActivateMenu,
     Spend(SpendTxMessage),
     Next,
     Previous,
@@ -247,3 +250,66 @@ impl From<FiatMessage> for Message {
         Message::Settings(SettingsMessage::Fiat(msg))
     }
 }
+
+#[cfg(feature = "breez")]
+#[derive(Debug, Clone)]
+pub enum ActivateMessage {
+    // Panel navigation
+    ShowMainPanel,
+    ShowSendPanel,
+    ShowReceivePanel,
+    ShowHistoryPanel,
+    ShowSettingsPanel,
+    
+    // Lightning wallet setup
+    CreateLightningWallet,
+    ConfirmBackup,
+    ShowImportWallet,
+    ImportMnemonicEdited(String),
+    ConfirmImport,
+    CancelImport,
+    LightningWalletCreated(Result<String, String>),
+    
+    // Send messages
+    DestinationEdited(String),
+    AmountEdited(String),
+    DescriptionChanged(String),
+    PrepareSend,
+    ReviewPayment,
+    Send,
+    SendPayment,
+    CancelPayment,
+    #[cfg(feature = "breez")]
+    PaymentPrepared(breez_sdk_liquid::prelude::PrepareSendResponse),
+    PrepareFailed(String),
+    PaymentSent(String),
+    SendFailed(String),
+    #[cfg(feature = "breez")]
+    LimitsFetched(u64, u64), // (min_sat, max_sat)
+
+    // Receive messages
+    RefreshHistory,
+    FilterChanged(String),
+    PaymentsLoaded(Vec<breez_sdk_liquid::prelude::Payment>),
+    DescriptionEdited(String),
+    PrepareReceive,
+    GenerateInvoice,
+    NewInvoice,
+    
+    // Confirmation messages
+    ShowConfirmation,
+    ConfirmPayment,
+    InvoiceGenerated(String),
+    InvoiceGenerationFailed(String),
+    InvoicePaymentReceived(String),
+
+    // Balance
+    RefreshBalance,
+    BalanceUpdated(crate::app::breez::BalanceInfo),
+
+    // Error handling
+    Error(String),
+}
+
+
+
