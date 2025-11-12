@@ -1,4 +1,4 @@
-//! Activate (Breez SDK) state management
+//! Active (Breez SDK) state management
 
 use iced::Task;
 use std::sync::Arc;
@@ -9,50 +9,15 @@ use crate::app::{
     cache::Cache,
     message::Message,
     state::State,
-    view::{self, activate::{ActivatePanel, ActivateSubPanel}, ActivateMessage, Message as ViewMessage},
+    view::{active::ActivePanel, ActiveMessage, Message as ViewMessage},
 };
 use crate::daemon::Daemon;
 
-impl State for ActivatePanel {
-    fn view<'a>(&'a self, cache: &'a Cache) -> Element<'a, ViewMessage> {
-        // Map the active panel to the correct menu item for proper highlighting
-        match self.active_panel {
-            crate::app::view::activate::ActivateSubPanel::Main => 
-                view::dashboard(
-                    &crate::app::Menu::Activate(crate::app::menu::ActivateMenu::Send),
-                    cache,
-                    None,
-                    crate::app::view::activate::ActivatePanel::view(self, cache),
-                ),
-            crate::app::view::activate::ActivateSubPanel::Send => 
-                view::dashboard(
-                    &crate::app::Menu::Activate(crate::app::menu::ActivateMenu::Send),
-                    cache,
-                    None,
-                    crate::app::view::activate::ActivatePanel::view(self, cache),
-                ),
-            crate::app::view::activate::ActivateSubPanel::Receive => 
-                view::dashboard(
-                    &crate::app::Menu::Activate(crate::app::menu::ActivateMenu::Receive),
-                    cache,
-                    None,
-                    crate::app::view::activate::ActivatePanel::view(self, cache),
-                ),
-            crate::app::view::activate::ActivateSubPanel::History => 
-                view::dashboard(
-                    &crate::app::Menu::Activate(crate::app::menu::ActivateMenu::History),
-                    cache,
-                    None,
-                    crate::app::view::activate::ActivatePanel::view(self, cache),
-                ),
-            crate::app::view::activate::ActivateSubPanel::Settings => 
-                view::dashboard(
-                    &crate::app::Menu::Activate(crate::app::menu::ActivateMenu::Send),
-                    cache,
-                    None,
-                    crate::app::view::activate::ActivatePanel::view(self, cache),
-                ),
-        }
+impl State for ActivePanel {
+    fn view<'a>(&'a self, _menu: &'a crate::app::menu::Menu, cache: &'a Cache) -> Element<'a, ViewMessage> {
+        // For active panel, we show simple content without the full dashboard wrapper
+        // since we handle our own header and navigation
+        crate::app::view::active::ActivePanel::view(self, cache)
     }
 
     fn update(
@@ -70,35 +35,35 @@ impl State for ActivatePanel {
             _ => (),
         }
 
-        let Message::View(ViewMessage::Activate(message)) = message else {
+        let Message::View(ViewMessage::Active(message)) = message else {
             return Task::none();
         };
 
         match message {
             // Navigation messages
-            ActivateMessage::ShowMainPanel => {
-                self.active_panel = crate::app::view::activate::ActivateSubPanel::Main;
+            ActiveMessage::ShowMainPanel => {
+                self.active_panel = crate::app::view::active::ActiveSubPanel::Main;
             }
-            ActivateMessage::ShowSendPanel => {
-                self.active_panel = crate::app::view::activate::ActivateSubPanel::Send;
+            ActiveMessage::ShowSendPanel => {
+                self.active_panel = crate::app::view::active::ActiveSubPanel::Send;
             }
-            ActivateMessage::ShowReceivePanel => {
-                self.active_panel = crate::app::view::activate::ActivateSubPanel::Receive;
+            ActiveMessage::ShowReceivePanel => {
+                self.active_panel = crate::app::view::active::ActiveSubPanel::Receive;
             }
-            ActivateMessage::ShowHistoryPanel => {
-                self.active_panel = crate::app::view::activate::ActivateSubPanel::History;
+            ActiveMessage::ShowHistoryPanel => {
+                self.active_panel = crate::app::view::active::ActiveSubPanel::History;
             }
-            ActivateMessage::ShowSettingsPanel => {
-                self.active_panel = crate::app::view::activate::ActivateSubPanel::Settings;
+            ActiveMessage::ShowSettingsPanel => {
+                self.active_panel = crate::app::view::active::ActiveSubPanel::Settings;
             }
             
             // Lightning wallet setup
             #[cfg(feature = "breez")]
-            ActivateMessage::CreateLightningWallet => {
+            ActiveMessage::CreateLightningWallet => {
                 match crate::app::breez::generate_lightning_mnemonic() {
                     Ok(mnemonic) => {
                         self.lightning_wallet_state = 
-                            crate::app::view::activate::LightningWalletState::ShowingBackup {
+                            crate::app::view::active::LightningWalletState::ShowingBackup {
                                 mnemonic,
                                 confirmed: false,
                             };
@@ -109,13 +74,18 @@ impl State for ActivatePanel {
                 }
             }
             #[cfg(feature = "breez")]
-            ActivateMessage::ConfirmBackup => {
-                if let crate::app::view::activate::LightningWalletState::ShowingBackup { ref mnemonic, .. } = 
+            ActiveMessage::ConfirmBackup => {
+                if let crate::app::view::active::LightningWalletState::ShowingBackup { ref mnemonic, .. } = 
                     self.lightning_wallet_state
                 {
+                    let Some(wallet) = self.wallet.as_ref() else {
+                        self.error = Some("No wallet available".to_string());
+                        return Task::none();
+                    };
+                    
                     let mnemonic_clone = mnemonic.clone();
                     let network_dir = self.data_dir.network_directory(self.network);
-                    let wallet_checksum = self.wallet.descriptor_checksum.clone();
+                    let wallet_checksum = wallet.descriptor_checksum.clone();
                     
                     // Store Lightning wallet for this specific Bitcoin wallet
                     if let Err(e) = crate::app::breez::store_lightning_mnemonic(
@@ -128,7 +98,7 @@ impl State for ActivatePanel {
                     }
                     
                     self.lightning_wallet_state = 
-                        crate::app::view::activate::LightningWalletState::Initializing;
+                        crate::app::view::active::LightningWalletState::Initializing;
                     
                     let network = self.network;
                     let breez_data_dir = network_dir.path().join(&wallet_checksum).join("lightning");
@@ -147,17 +117,17 @@ impl State for ActivatePanel {
                 }
             }
             #[cfg(feature = "breez")]
-            ActivateMessage::ShowImportWallet => {
+            ActiveMessage::ShowImportWallet => {
                 self.lightning_wallet_state = 
-                    crate::app::view::activate::LightningWalletState::ImportingWallet {
+                    crate::app::view::active::LightningWalletState::ImportingWallet {
                         mnemonic_input: String::new(),
                         error: None,
                     };
             }
             
             #[cfg(feature = "breez")]
-            ActivateMessage::ImportMnemonicEdited(value) => {
-                if let crate::app::view::activate::LightningWalletState::ImportingWallet { 
+            ActiveMessage::ImportMnemonicEdited(value) => {
+                if let crate::app::view::active::LightningWalletState::ImportingWallet { 
                     ref mut mnemonic_input, 
                     .. 
                 } = self.lightning_wallet_state {
@@ -166,15 +136,15 @@ impl State for ActivatePanel {
             }
             
             #[cfg(feature = "breez")]
-            ActivateMessage::CancelImport => {
+            ActiveMessage::CancelImport => {
                 self.lightning_wallet_state = 
-                    crate::app::view::activate::LightningWalletState::NotCreated;
+                    crate::app::view::active::LightningWalletState::NotCreated;
             }
             
             #[cfg(feature = "breez")]
-            ActivateMessage::ConfirmImport => {
+            ActiveMessage::ConfirmImport => {
                 // Extract and clone mnemonic to avoid borrow checker issues
-                let mnemonic_input = if let crate::app::view::activate::LightningWalletState::ImportingWallet { 
+                let mnemonic_input = if let crate::app::view::active::LightningWalletState::ImportingWallet { 
                     ref mnemonic_input, 
                     .. 
                 } = self.lightning_wallet_state {
@@ -189,7 +159,7 @@ impl State for ActivatePanel {
                 
                 if words.len() != 24 {
                     self.lightning_wallet_state = 
-                        crate::app::view::activate::LightningWalletState::ImportingWallet {
+                        crate::app::view::active::LightningWalletState::ImportingWallet {
                             mnemonic_input,
                             error: Some(format!("Invalid mnemonic: expected 24 words, got {}", words.len())),
                         };
@@ -200,8 +170,13 @@ impl State for ActivatePanel {
                 use bip39::Mnemonic;
                 match Mnemonic::parse(&mnemonic_trimmed) {
                         Ok(_) => {
+                            let Some(wallet) = self.wallet.as_ref() else {
+                                self.error = Some("No wallet available".to_string());
+                                return Task::none();
+                            };
+                            
                             let network_dir = self.data_dir.network_directory(self.network);
-                            let wallet_checksum = self.wallet.descriptor_checksum.clone();
+                            let wallet_checksum = wallet.descriptor_checksum.clone();
                             
                             // Delete existing corrupted wallet if any
                             let lightning_dir = network_dir.path().join(&wallet_checksum).join("lightning");
@@ -227,7 +202,7 @@ impl State for ActivatePanel {
                             
                             // Initialize SDK with imported mnemonic
                             self.lightning_wallet_state = 
-                                crate::app::view::activate::LightningWalletState::Initializing;
+                                crate::app::view::active::LightningWalletState::Initializing;
                             
                             let mnemonic_for_init = mnemonic_trimmed;
                             let network = self.network;
@@ -247,7 +222,7 @@ impl State for ActivatePanel {
                         }
                         Err(e) => {
                             self.lightning_wallet_state = 
-                                crate::app::view::activate::LightningWalletState::ImportingWallet {
+                                crate::app::view::active::LightningWalletState::ImportingWallet {
                                     mnemonic_input,
                                     error: Some(format!("Invalid BIP39 mnemonic: {}", e)),
                                 };
@@ -256,57 +231,57 @@ impl State for ActivatePanel {
             }
             
             #[cfg(feature = "breez")]
-            ActivateMessage::LightningWalletCreated(_result) => {
+            ActiveMessage::LightningWalletCreated(_result) => {
                 // Handled by BreezInitialized message
             }
             
             // Send/Receive form messages
-            ActivateMessage::DestinationEdited(v) => {
+            ActiveMessage::DestinationEdited(v) => {
                 self.destination = v;
                 self.destination_valid = !self.destination.is_empty() 
                     && (self.destination.starts_with("lnbc") 
                         || self.destination.starts_with("lntb")
                         || self.destination.len() > 20);
             }
-            ActivateMessage::AmountEdited(v) => {
+            ActiveMessage::AmountEdited(v) => {
                 self.amount = v;
                 self.amount_valid = self.amount.parse::<u64>().is_ok();
             }
-            ActivateMessage::DescriptionEdited(v) | ActivateMessage::DescriptionChanged(v) => {
+            ActiveMessage::DescriptionEdited(v) | ActiveMessage::DescriptionChanged(v) => {
                 self.description = v;
             }
-            ActivateMessage::ReviewPayment => {
+            ActiveMessage::ReviewPayment => {
                 #[cfg(feature = "breez")]
                 return self.prepare_send();
                 #[cfg(not(feature = "breez"))]
                 Task::none()
             }
-            ActivateMessage::SendPayment => {
+            ActiveMessage::SendPayment => {
                 #[cfg(feature = "breez")]
                 return self.send_payment();
                 #[cfg(not(feature = "breez"))]
                 Task::none()
             }
-            ActivateMessage::CancelPayment => {
+            ActiveMessage::CancelPayment => {
                 self.prepare_send_response = None;
                 self.preparing = false;
                 self.sending = false;
             }
-            ActivateMessage::GenerateInvoice => {
+            ActiveMessage::GenerateInvoice => {
                 #[cfg(feature = "breez")]
                 return self.generate_invoice();
                 #[cfg(not(feature = "breez"))]
                 Task::none()
             }
-            ActivateMessage::NewInvoice => {
+            ActiveMessage::NewInvoice => {
                 self.generated_invoice = None;
                 self.amount = String::new();
                 self.description = String::new();
             }
-            ActivateMessage::RefreshHistory => {
+            ActiveMessage::RefreshHistory => {
                 // TODO: Implement history refresh
             }
-            ActivateMessage::PrepareSend => {
+            ActiveMessage::PrepareSend => {
                 #[cfg(feature = "breez")]
                 return self.prepare_send();
                 #[cfg(not(feature = "breez"))]
@@ -315,12 +290,12 @@ impl State for ActivatePanel {
                     Task::none()
                 }
             }
-            ActivateMessage::ShowConfirmation => {}
-            ActivateMessage::ConfirmPayment => {
+            ActiveMessage::ShowConfirmation => {}
+            ActiveMessage::ConfirmPayment => {
                 #[cfg(feature = "breez")]
                 return self.send_payment();
             }
-            ActivateMessage::Send => {
+            ActiveMessage::Send => {
                 #[cfg(feature = "breez")]
                 return self.send_payment();
                 #[cfg(not(feature = "breez"))]
@@ -330,19 +305,19 @@ impl State for ActivatePanel {
                 }
             }
             #[cfg(feature = "breez")]
-            ActivateMessage::PaymentPrepared(response) => {
+            ActiveMessage::PaymentPrepared(response) => {
                 self.prepare_send_response = Some(response);
                 self.preparing = false;
                 self.destination_valid = true;
                 self.error = None;
             }
             #[cfg(feature = "breez")]
-            ActivateMessage::PrepareFailed(err) => {
+            ActiveMessage::PrepareFailed(err) => {
                 self.preparing = false;
                 self.error = Some(format!("Failed to prepare payment: {}", err));
             }
             #[cfg(feature = "breez")]
-            ActivateMessage::PaymentSent(msg) => {
+            ActiveMessage::PaymentSent(msg) => {
                 self.sending = false;
                 self.error = None;
                 // Clear form
@@ -357,32 +332,32 @@ impl State for ActivatePanel {
                 return self.refresh_balance();
             }
             #[cfg(feature = "breez")]
-            ActivateMessage::SendFailed(err) => {
+            ActiveMessage::SendFailed(err) => {
                 self.sending = false;
                 self.error = Some(format!("Failed to send payment: {}", err));
             }
             #[cfg(feature = "breez")]
-            ActivateMessage::LimitsFetched(min_sat, max_sat) => {
+            ActiveMessage::LimitsFetched(min_sat, max_sat) => {
                 self.payment_limits = Some((min_sat, max_sat));
             }
-            ActivateMessage::FilterChanged(_filter) => {}
-            ActivateMessage::PaymentsLoaded(_payments) => {}
-            ActivateMessage::PrepareReceive => {
+            ActiveMessage::FilterChanged(_filter) => {}
+            ActiveMessage::PaymentsLoaded(_payments) => {}
+            ActiveMessage::PrepareReceive => {
                 self.error = Some("Prepare receive not yet implemented".to_string());
             }
             #[cfg(feature = "breez")]
-            ActivateMessage::InvoiceGenerated(invoice) => {
+            ActiveMessage::InvoiceGenerated(invoice) => {
                 self.generated_invoice = Some(invoice);
                 self.preparing = false;
                 self.error = None;
             }
             #[cfg(feature = "breez")]
-            ActivateMessage::InvoiceGenerationFailed(err) => {
+            ActiveMessage::InvoiceGenerationFailed(err) => {
                 self.preparing = false;
                 self.error = Some(format!("Failed to generate invoice: {}", err));
             }
             #[cfg(feature = "breez")]
-            ActivateMessage::InvoicePaymentReceived(msg) => {
+            ActiveMessage::InvoicePaymentReceived(msg) => {
                 self.error = Some(format!("✅ Payment received! {}", msg));
                 // Clear form
                 self.generated_invoice = None;
@@ -392,10 +367,10 @@ impl State for ActivatePanel {
                 return self.refresh_balance();
             }
             #[cfg(feature = "breez")]
-            ActivateMessage::BalanceUpdated(balance) => {
+            ActiveMessage::BalanceUpdated(balance) => {
                 self.balance = Some(balance);
             }
-            ActivateMessage::RefreshBalance => {
+            ActiveMessage::RefreshBalance => {
                 #[cfg(feature = "breez")]
                 return self.refresh_balance();
                 #[cfg(not(feature = "breez"))]
@@ -404,7 +379,7 @@ impl State for ActivatePanel {
                     Task::none()
                 }
             }
-            ActivateMessage::Error(e) => {
+            ActiveMessage::Error(e) => {
                 self.error = Some(e);
             }
         }

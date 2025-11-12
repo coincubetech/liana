@@ -2,17 +2,16 @@ mod label;
 mod message;
 mod warning;
 
+pub mod active_views;
 pub mod coins;
 pub mod export;
 pub mod fiat;
+pub mod global_home;
 pub mod home;
 pub mod hw;
 
 #[cfg(feature = "buysell")]
 pub mod buysell;
-
-#[cfg(feature = "breez")]
-pub mod activate;
 
 pub mod psbt;
 pub mod psbts;
@@ -24,10 +23,6 @@ pub mod transactions;
 
 pub use fiat::FiatAmountConverter;
 pub use message::*;
-
-#[cfg(feature = "breez")]
-pub use activate::ActivatePanel;
-
 use warning::warn;
 
 use iced::{
@@ -39,8 +34,8 @@ use liana_ui::{
     color,
     component::{button, text::*},
     icon::{
-        coins_icon, cross_icon, history_icon, home_icon, receive_icon, recovery_icon, send_icon,
-        settings_icon,
+        coins_icon, cross_icon, down_icon, history_icon, home_icon, lightning_icon, plus_icon,
+        receive_icon, recovery_icon, send_icon, settings_icon, up_icon, vault_icon,
     },
     image::*,
     theme,
@@ -50,9 +45,6 @@ use liana_ui::{
 #[cfg(feature = "buysell")]
 use liana_ui::icon::bitcoin_icon;
 
-#[cfg(feature = "breez")]
-use crate::app::menu::ActivateMenu;
-
 use crate::app::{cache::Cache, error::Error, menu::Menu};
 
 fn menu_bar_highlight<'a, T: 'a>() -> Container<'a, T> {
@@ -61,7 +53,8 @@ fn menu_bar_highlight<'a, T: 'a>() -> Container<'a, T> {
         .style(theme::container::custom(color::ORANGE))
 }
 
-pub fn sidebar<'a>(menu: &Menu, cache: &'a Cache, activate_expanded: bool) -> Container<'a, Message> {
+pub fn sidebar<'a>(menu: &Menu, cache: &'a Cache, has_vault: bool) -> Container<'a, Message> {
+    // Top-level Home button
     let home_button = if *menu == Menu::Home {
         row!(
             button::menu_active(Some(home_icon()), "Home")
@@ -73,85 +66,6 @@ pub fn sidebar<'a>(menu: &Menu, cache: &'a Cache, activate_expanded: bool) -> Co
         row!(button::menu(Some(home_icon()), "Home")
             .on_press(Message::Menu(Menu::Home))
             .width(iced::Length::Fill),)
-    };
-
-    let transactions_button = if *menu == Menu::Transactions {
-        row!(
-            button::menu_active(Some(history_icon()), "Transactions")
-                .on_press(Message::Reload)
-                .width(iced::Length::Fill),
-            menu_bar_highlight()
-        )
-    } else {
-        row!(button::menu(Some(history_icon()), "Transactions")
-            .on_press(Message::Menu(Menu::Transactions))
-            .width(iced::Length::Fill))
-    };
-
-    let coins_button = if *menu == Menu::Coins {
-        row!(
-            button::menu_active(Some(coins_icon()), "Coins")
-                .on_press(Message::Reload)
-                .width(iced::Length::Fill),
-            menu_bar_highlight()
-        )
-    } else {
-        row!(button::menu(Some(coins_icon()), "Coins")
-            .style(theme::button::menu)
-            .on_press(Message::Menu(Menu::Coins))
-            .width(iced::Length::Fill))
-    };
-
-    let psbt_button = if *menu == Menu::PSBTs {
-        row!(
-            button::menu_active(Some(history_icon()), "PSBTs")
-                .on_press(Message::Reload)
-                .width(iced::Length::Fill),
-            menu_bar_highlight()
-        )
-    } else {
-        row!(button::menu(Some(history_icon()), "PSBTs")
-            .on_press(Message::Menu(Menu::PSBTs))
-            .width(iced::Length::Fill))
-    };
-
-    let spend_button = if *menu == Menu::CreateSpendTx {
-        row!(
-            button::menu_active(Some(send_icon()), "Send")
-                .on_press(Message::Reload)
-                .width(iced::Length::Fill),
-            menu_bar_highlight()
-        )
-    } else {
-        row!(button::menu(Some(send_icon()), "Send")
-            .on_press(Message::Menu(Menu::CreateSpendTx))
-            .width(iced::Length::Fill))
-    };
-
-    let receive_button = if *menu == Menu::Receive {
-        row!(
-            button::menu_active(Some(receive_icon()), "Receive")
-                .on_press(Message::Reload)
-                .width(iced::Length::Fill),
-            menu_bar_highlight()
-        )
-    } else {
-        row!(button::menu(Some(receive_icon()), "Receive")
-            .on_press(Message::Menu(Menu::Receive))
-            .width(iced::Length::Fill))
-    };
-
-    let recovery_button = if *menu == Menu::Recovery {
-        row!(
-            button::menu_active(Some(recovery_icon()), "Recovery")
-                .on_press(Message::Reload)
-                .width(iced::Length::Fill),
-            menu_bar_highlight()
-        )
-    } else {
-        row!(button::menu(Some(recovery_icon()), "Recovery")
-            .on_press(Message::Menu(Menu::Recovery))
-            .width(iced::Length::Fill))
     };
 
     #[cfg(feature = "buysell")]
@@ -170,158 +84,398 @@ pub fn sidebar<'a>(menu: &Menu, cache: &'a Cache, activate_expanded: bool) -> Co
         }
     };
 
-    #[cfg(feature = "breez")]
-    let is_activate_selected = matches!(menu, Menu::Activate(_));
-
-    let settings_button = if *menu == Menu::Settings {
-        row!(
-            button::menu_active(Some(settings_icon()), "Settings")
-                .on_press(Message::Menu(Menu::Settings))
-                .width(iced::Length::Fill),
-            menu_bar_highlight()
+    // Build the main menu column
+    let mut menu_column = Column::new()
+        .spacing(0)
+        .width(Length::Fill)
+        .push(
+            Container::new(liana_logotype().width(Length::Fill))
+                .padding(10)
+                .align_x(iced::Alignment::Center)
+                .width(Length::Fill),
         )
-    } else {
-        row!(button::menu(Some(settings_icon()), "Settings")
-            .on_press(Message::Menu(Menu::Settings))
-            .width(iced::Length::Fill))
-    };
+        .push(home_button);
 
-    Container::new(
-        Column::new()
-            .push(
-                Column::new()
-                    .push(liana_logotype().width(Length::Fill))
-                    .push(home_button)
-                    .push(spend_button)
-                    .push(receive_button)
-                    .push(coins_button)
-                    .push(transactions_button)
-                    .push(psbt_button)
-                    .push_maybe({
-                        #[cfg(feature = "buysell")]
-                        {
-                            Some(buy_sell_button)
-                        }
-                        #[cfg(not(feature = "buysell"))]
-                        {
-                            None::<Row<'_, Message>>
-                        }
-                    })
-                    .push_maybe({
-                        #[cfg(feature = "breez")]
-                        {
-                            if is_activate_selected {
-                                Some(row!(
-                                    button::menu_active(None, "⚡ Activate")
-                                        .on_press(Message::ToggleActivateMenu)
-                                        .width(iced::Length::Fill),
-                                    menu_bar_highlight()
-                                ))
-                            } else {
-                                Some(row!(button::menu(None, "⚡ Activate")
-                                    .on_press(Message::ToggleActivateMenu)
-                                    .width(iced::Length::Fill)))
-                            }
-                        }
-                        #[cfg(not(feature = "breez"))]
-                        {
-                            None::<Row<'_, Message>>
-                        }
-                    })
-                    .push_maybe({
-                        #[cfg(feature = "breez")]
-                        {
-                            if activate_expanded {
-                                let is_send_active = matches!(menu, Menu::Activate(ActivateMenu::Send));
-                                Some(if is_send_active {
-                                    row!(button::menu_active(None, "  Send")
-                                        .on_press(Message::Menu(Menu::Activate(ActivateMenu::Send)))
-                                        .width(iced::Length::Fill),
-                                        menu_bar_highlight())
-                                } else {
-                                    row!(button::menu(None, "  Send")
-                                        .on_press(Message::Menu(Menu::Activate(ActivateMenu::Send)))
-                                        .width(iced::Length::Fill))
-                                })
-                            } else {
-                                None
-                            }
-                        }
-                        #[cfg(not(feature = "breez"))]
-                        {
-                            None::<Row<'_, Message>>
-                        }
-                    })
-                    .push_maybe({
-                        #[cfg(feature = "breez")]
-                        {
-                            if activate_expanded {
-                                let is_receive_active = matches!(menu, Menu::Activate(ActivateMenu::Receive));
-                                Some(if is_receive_active {
-                                    row!(button::menu_active(None, "  Receive")
-                                        .on_press(Message::Menu(Menu::Activate(ActivateMenu::Receive)))
-                                        .width(iced::Length::Fill),
-                                        menu_bar_highlight())
-                                } else {
-                                    row!(button::menu(None, "  Receive")
-                                        .on_press(Message::Menu(Menu::Activate(ActivateMenu::Receive)))
-                                        .width(iced::Length::Fill))
-                                })
-                            } else {
-                                None
-                            }
-                        }
-                        #[cfg(not(feature = "breez"))]
-                        {
-                            None::<Row<'_, Message>>
-                        }
-                    })
-                    .push_maybe({
-                        #[cfg(feature = "breez")]
-                        {
-                            if activate_expanded {
-                                let is_history_active = matches!(menu, Menu::Activate(ActivateMenu::History));
-                                Some(if is_history_active {
-                                    row!(button::menu_active(None, "  History")
-                                        .on_press(Message::Menu(Menu::Activate(ActivateMenu::History)))
-                                        .width(iced::Length::Fill),
-                                        menu_bar_highlight())
-                                } else {
-                                    row!(button::menu(None, "  History")
-                                        .on_press(Message::Menu(Menu::Activate(ActivateMenu::History)))
-                                        .width(iced::Length::Fill))
-                                })
-                            } else {
-                                None
-                            }
-                        }
-                        #[cfg(not(feature = "breez"))]
-                        {
-                            None::<Row<'_, Message>>
-                        }
-                    })
-                    .height(Length::Fill),
+    // Check if Active submenu is expanded from cache
+    let is_active_expanded = cache.active_expanded;
+
+    // Active menu button with expand/collapse chevron
+    let active_chevron = if is_active_expanded {
+        up_icon()
+    } else {
+        down_icon()
+    };
+    let active_button = Button::new(
+        Row::new()
+            .spacing(10)
+            .align_y(iced::alignment::Vertical::Center)
+            .push(lightning_icon().style(theme::text::secondary))
+            .push(text("Active").size(15))
+            .push(Space::with_width(Length::Fill))
+            .push(active_chevron.style(theme::text::secondary))
+            .padding(10),
+    )
+    .width(iced::Length::Fill)
+    .style(theme::button::menu)
+    .on_press(Message::ToggleActive);
+
+    menu_column = menu_column.push(active_button);
+
+    // Add Active submenu items if expanded
+    if is_active_expanded {
+        use crate::app::menu::ActiveSubMenu;
+
+        // Active Send
+        let active_send_button = if matches!(menu, Menu::Active(ActiveSubMenu::Send)) {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu_active(Some(send_icon()), "Send")
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
             )
-            .push(
-                Container::new(
-                    Column::new()
-                        .spacing(10)
-                        .push_maybe(cache.rescan_progress().map(|p| {
-                            Container::new(text(format!("  Rescan...{:.2}%  ", p * 100.0)))
-                                .padding(5)
-                                .style(theme::pill::simple)
-                        }))
-                        .push(recovery_button)
-                        .push(settings_button),
+            .width(Length::Fill)
+        } else {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu(Some(send_icon()), "Send")
+                    .on_press(Message::Menu(Menu::Active(ActiveSubMenu::Send)))
+                    .width(iced::Length::Fill),
+            )
+            .width(Length::Fill)
+        };
+
+        // Active Receive
+        let active_receive_button = if matches!(menu, Menu::Active(ActiveSubMenu::Receive)) {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu_active(Some(receive_icon()), "Receive")
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
+            )
+            .width(Length::Fill)
+        } else {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu(Some(receive_icon()), "Receive")
+                    .on_press(Message::Menu(Menu::Active(ActiveSubMenu::Receive)))
+                    .width(iced::Length::Fill),
+            )
+            .width(Length::Fill)
+        };
+
+        // Active Transactions
+        let active_transactions_button =
+            if matches!(menu, Menu::Active(ActiveSubMenu::Transactions(_))) {
+                row!(
+                    Space::with_width(Length::Fixed(20.0)),
+                    button::menu_active(Some(history_icon()), "Transactions")
+                        .on_press(Message::Reload)
+                        .width(iced::Length::Fill),
+                    menu_bar_highlight()
                 )
                 .width(Length::Fill)
-                .height(Length::Shrink),
-            ),
+            } else {
+                row!(
+                    Space::with_width(Length::Fixed(20.0)),
+                    button::menu(Some(history_icon()), "Transactions")
+                        .on_press(Message::Menu(Menu::Active(ActiveSubMenu::Transactions(
+                            None
+                        ))))
+                        .width(iced::Length::Fill),
+                )
+                .width(Length::Fill)
+            };
+
+        // Active Settings
+        let active_settings_button = if matches!(menu, Menu::Active(ActiveSubMenu::Settings(_))) {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu_active(Some(settings_icon()), "Settings")
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
+            )
+            .width(Length::Fill)
+        } else {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu(Some(settings_icon()), "Settings")
+                    .on_press(Message::Menu(Menu::Active(ActiveSubMenu::Settings(None))))
+                    .width(iced::Length::Fill),
+            )
+            .width(Length::Fill)
+        };
+
+        menu_column = menu_column
+            .push(active_send_button)
+            .push(active_receive_button)
+            .push(active_transactions_button)
+            .push(active_settings_button);
+    }
+
+    // Check if Vault submenu is expanded from cache
+    let is_vault_expanded = cache.vault_expanded;
+
+    // Vault menu button - show "Vault +" if no vault exists, otherwise show expandable "Vault"
+    if !has_vault {
+        // No vault - show "Vault +" button that launches installer
+        let vault_plus_button = Button::new(
+            Row::new()
+                .spacing(10)
+                .align_y(iced::alignment::Vertical::Center)
+                .push(vault_icon().style(theme::text::secondary))
+                .push(text("Vault").size(15))
+                .push(Space::with_width(Length::Fill))
+                .push(
+                    Container::new(plus_icon().style(theme::text::secondary))
+                        .padding(iced::Padding::from([3.0, 0.0]))  // Add 3px top padding for better centering
+                        .align_y(iced::alignment::Vertical::Top)
+                )
+                .padding(10),
+        )
+        .width(iced::Length::Fill)
+        .style(theme::button::menu)
+        .on_press(Message::SetupVault);
+        
+        menu_column = menu_column.push(vault_plus_button);
+    } else {
+        // Has vault - show expandable Vault menu
+        let vault_chevron = if is_vault_expanded {
+            up_icon()
+        } else {
+            down_icon()
+        };
+        let vault_button = Button::new(
+            Row::new()
+                .spacing(10)
+                .align_y(iced::alignment::Vertical::Center)
+                .push(vault_icon().style(theme::text::secondary))
+                .push(text("Vault").size(15))
+                .push(Space::with_width(Length::Fill))
+                .push(vault_chevron.style(theme::text::secondary))
+                .padding(10),
+        )
+        .width(iced::Length::Fill)
+        .style(theme::button::menu)
+        .on_press(Message::ToggleVault);
+
+        menu_column = menu_column.push(vault_button);
+    }
+
+    // Add Vault submenu items if expanded (and vault exists)
+    if has_vault && is_vault_expanded {
+        use crate::app::menu::VaultSubMenu;
+
+        // Home
+        let vault_home_button = if matches!(menu, Menu::Vault(VaultSubMenu::Home)) {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu_active(Some(home_icon()), "Home")
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight(),
+            )
+            .width(Length::Fill)
+        } else {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu(Some(home_icon()), "Home")
+                    .on_press(Message::Menu(Menu::Vault(VaultSubMenu::Home)))
+                    .width(iced::Length::Fill),
+            )
+            .width(Length::Fill)
+        };
+
+        // Send
+        let vault_send_button = if matches!(menu, Menu::Vault(VaultSubMenu::Send)) {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu_active(Some(send_icon()), "Send")
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
+            )
+            .width(Length::Fill)
+        } else {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu(Some(send_icon()), "Send")
+                    .on_press(Message::Menu(Menu::Vault(VaultSubMenu::Send)))
+                    .width(iced::Length::Fill),
+            )
+            .width(Length::Fill)
+        };
+
+        // Receive
+        let vault_receive_button = if matches!(menu, Menu::Vault(VaultSubMenu::Receive)) {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu_active(Some(receive_icon()), "Receive")
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
+            )
+            .width(Length::Fill)
+        } else {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu(Some(receive_icon()), "Receive")
+                    .on_press(Message::Menu(Menu::Vault(VaultSubMenu::Receive)))
+                    .width(iced::Length::Fill),
+            )
+            .width(Length::Fill)
+        };
+
+        // Coins
+        let vault_coins_button = if matches!(menu, Menu::Vault(VaultSubMenu::Coins(_))) {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu_active(Some(coins_icon()), "Coins")
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
+            )
+            .width(Length::Fill)
+        } else {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu(Some(coins_icon()), "Coins")
+                    .on_press(Message::Menu(Menu::Vault(VaultSubMenu::Coins(None))))
+                    .width(iced::Length::Fill),
+            )
+            .width(Length::Fill)
+        };
+
+        // Transactions
+        let vault_transactions_button =
+            if matches!(menu, Menu::Vault(VaultSubMenu::Transactions(_))) {
+                row!(
+                    Space::with_width(Length::Fixed(20.0)),
+                    button::menu_active(Some(history_icon()), "Transactions")
+                        .on_press(Message::Reload)
+                        .width(iced::Length::Fill),
+                    menu_bar_highlight()
+                )
+                .width(Length::Fill)
+            } else {
+                row!(
+                    Space::with_width(Length::Fixed(20.0)),
+                    button::menu(Some(history_icon()), "Transactions")
+                        .on_press(Message::Menu(Menu::Vault(VaultSubMenu::Transactions(None))))
+                        .width(iced::Length::Fill),
+                )
+                .width(Length::Fill)
+            };
+
+        // PSBTs
+        let vault_psbts_button = if matches!(menu, Menu::Vault(VaultSubMenu::PSBTs(_))) {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu_active(Some(history_icon()), "PSBTs")
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
+            )
+            .width(Length::Fill)
+        } else {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu(Some(history_icon()), "PSBTs")
+                    .on_press(Message::Menu(Menu::Vault(VaultSubMenu::PSBTs(None))))
+                    .width(iced::Length::Fill),
+            )
+            .width(Length::Fill)
+        };
+
+        // Recovery
+        let vault_recovery_button = if matches!(menu, Menu::Vault(VaultSubMenu::Recovery)) {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu_active(Some(recovery_icon()), "Recovery")
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
+            )
+            .width(Length::Fill)
+        } else {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu(Some(recovery_icon()), "Recovery")
+                    .on_press(Message::Menu(Menu::Vault(VaultSubMenu::Recovery)))
+                    .width(iced::Length::Fill),
+            )
+            .width(Length::Fill)
+        };
+
+        // Settings
+        let vault_settings_button = if matches!(menu, Menu::Vault(VaultSubMenu::Settings(_))) {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu_active(Some(settings_icon()), "Settings")
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
+            )
+            .width(Length::Fill)
+        } else {
+            row!(
+                Space::with_width(Length::Fixed(20.0)),
+                button::menu(Some(settings_icon()), "Settings")
+                    .on_press(Message::Menu(Menu::Vault(VaultSubMenu::Settings(None))))
+                    .width(iced::Length::Fill),
+            )
+            .width(Length::Fill)
+        };
+
+        menu_column = menu_column
+            .push(vault_home_button)
+            .push(vault_send_button)
+            .push(vault_receive_button)
+            .push(vault_coins_button)
+            .push(vault_transactions_button)
+            .push(vault_psbts_button)
+            .push(vault_recovery_button)
+            .push(vault_settings_button);
+    }
+
+    // Add Buy/Sell button after submenu items (only if vault exists)
+    menu_column = menu_column.push_maybe({
+        #[cfg(feature = "buysell")]
+        {
+            if has_vault {
+                Some(buy_sell_button)
+            } else {
+                None
+            }
+        }
+        #[cfg(not(feature = "buysell"))]
+        {
+            None::<Row<'_, Message>>
+        }
+    });
+
+    Container::new(
+        Column::new().push(menu_column.height(Length::Fill)).push(
+            Container::new(
+                Column::new()
+                    .spacing(10)
+                    .push_maybe(cache.rescan_progress().map(|p| {
+                        Container::new(text(format!("  Rescan...{:.2}%  ", p * 100.0)))
+                            .padding(5)
+                            .style(theme::pill::simple)
+                    })),
+            )
+            .width(Length::Fill)
+            .height(Length::Shrink),
+        ),
     )
     .style(theme::container::foreground)
 }
 
-pub fn small_sidebar<'a>(menu: &Menu, cache: &'a Cache, _activate_expanded: bool) -> Container<'a, Message> {
+pub fn small_sidebar<'a>(menu: &Menu, cache: &'a Cache, has_vault: bool) -> Container<'a, Message> {
+    // Home button
     let home_button = if *menu == Menu::Home {
         row!(
             button::menu_active_small(home_icon())
@@ -335,85 +489,230 @@ pub fn small_sidebar<'a>(menu: &Menu, cache: &'a Cache, _activate_expanded: bool
             .width(iced::Length::Fill),)
     };
 
-    let transactions_button = if *menu == Menu::Transactions {
-        row!(
-            button::menu_active_small(history_icon())
-                .on_press(Message::Reload)
-                .width(iced::Length::Fill),
-            menu_bar_highlight()
-        )
-    } else {
-        row!(button::menu_small(history_icon())
-            .on_press(Message::Menu(Menu::Transactions))
-            .width(iced::Length::Fill))
-    };
+    // Build menu column starting with logo and home button
+    let mut menu_column = Column::new()
+        .push(Container::new(liana_logotype().width(Length::Fixed(85.0))).padding(10))
+        .push(home_button);
 
-    let coins_button = if *menu == Menu::Coins {
-        row!(
-            button::menu_active_small(coins_icon())
-                .on_press(Message::Reload)
-                .width(iced::Length::Fill),
-            menu_bar_highlight()
-        )
-    } else {
-        row!(button::menu_small(coins_icon())
-            .style(theme::button::menu)
-            .on_press(Message::Menu(Menu::Coins))
-            .width(iced::Length::Fill))
-    };
+    // Active button - toggle with ToggleActive message
+    let active_button = row!(button::menu_small(lightning_icon())
+        .on_press(Message::ToggleActive)
+        .width(iced::Length::Fill),);
 
-    let psbt_button = if *menu == Menu::PSBTs {
-        row!(
-            button::menu_active_small(history_icon())
-                .on_press(Message::Reload)
-                .width(iced::Length::Fill),
-            menu_bar_highlight()
-        )
-    } else {
-        row!(button::menu_small(history_icon())
-            .on_press(Message::Menu(Menu::PSBTs))
-            .width(iced::Length::Fill))
-    };
+    // Check if Active submenu is expanded from cache
+    let is_active_expanded = cache.active_expanded;
 
-    let spend_button = if *menu == Menu::CreateSpendTx {
-        row!(
-            button::menu_active_small(send_icon())
-                .on_press(Message::Reload)
-                .width(iced::Length::Fill),
-            menu_bar_highlight()
-        )
-    } else {
-        row!(button::menu_small(send_icon())
-            .on_press(Message::Menu(Menu::CreateSpendTx))
-            .width(iced::Length::Fill))
-    };
+    menu_column = menu_column.push(active_button);
 
-    let receive_button = if *menu == Menu::Receive {
-        row!(
-            button::menu_active_small(receive_icon())
-                .on_press(Message::Reload)
-                .width(iced::Length::Fill),
-            menu_bar_highlight()
-        )
-    } else {
-        row!(button::menu_small(receive_icon())
-            .on_press(Message::Menu(Menu::Receive))
-            .width(iced::Length::Fill))
-    };
+    // Add Active submenu items if expanded
+    if is_active_expanded {
+        use crate::app::menu::ActiveSubMenu;
 
-    let recovery_button = if *menu == Menu::Recovery {
-        row!(
-            button::menu_active_small(recovery_icon())
-                .on_press(Message::Reload)
-                .width(iced::Length::Fill),
-            menu_bar_highlight()
-        )
-    } else {
-        row!(button::menu_small(recovery_icon())
-            .on_press(Message::Menu(Menu::Recovery))
-            .width(iced::Length::Fill))
-    };
+        // Active Send
+        let active_send_button = if matches!(menu, Menu::Active(ActiveSubMenu::Send)) {
+            row!(
+                button::menu_active_small(send_icon())
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight(),
+            )
+        } else {
+            row!(button::menu_small(send_icon())
+                .on_press(Message::Menu(Menu::Active(ActiveSubMenu::Send)))
+                .width(iced::Length::Fill),)
+        };
 
+        // Active Receive
+        let active_receive_button = if matches!(menu, Menu::Active(ActiveSubMenu::Receive)) {
+            row!(
+                button::menu_active_small(receive_icon())
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
+            )
+        } else {
+            row!(button::menu_small(receive_icon())
+                .on_press(Message::Menu(Menu::Active(ActiveSubMenu::Receive)))
+                .width(iced::Length::Fill),)
+        };
+
+        // Active Transactions
+        let active_transactions_button =
+            if matches!(menu, Menu::Active(ActiveSubMenu::Transactions(_))) {
+                row!(
+                    button::menu_active_small(history_icon())
+                        .on_press(Message::Reload)
+                        .width(iced::Length::Fill),
+                    menu_bar_highlight()
+                )
+            } else {
+                row!(button::menu_small(history_icon())
+                    .on_press(Message::Menu(Menu::Active(ActiveSubMenu::Transactions(
+                        None
+                    ))))
+                    .width(iced::Length::Fill),)
+            };
+
+        // Active Settings
+        let active_settings_button = if matches!(menu, Menu::Active(ActiveSubMenu::Settings(_))) {
+            row!(
+                button::menu_active_small(settings_icon())
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
+            )
+        } else {
+            row!(button::menu_small(settings_icon())
+                .on_press(Message::Menu(Menu::Active(ActiveSubMenu::Settings(None))))
+                .width(iced::Length::Fill),)
+        };
+
+        menu_column = menu_column
+            .push(active_send_button)
+            .push(active_receive_button)
+            .push(active_transactions_button)
+            .push(active_settings_button);
+    }
+
+    // Check if Vault submenu is expanded from cache
+    let is_vault_expanded = cache.vault_expanded;
+
+    // Vault button - toggle with ToggleVault message
+    let vault_button = row!(button::menu_small(vault_icon())
+        .on_press(Message::ToggleVault)
+        .width(iced::Length::Fill),);
+
+    menu_column = menu_column.push(vault_button);
+
+    // Add Vault submenu items if expanded
+    if is_vault_expanded {
+        use crate::app::menu::VaultSubMenu;
+
+        // Vault Home
+        let vault_home_button = if matches!(menu, Menu::Vault(VaultSubMenu::Home)) {
+            row!(
+                button::menu_active_small(home_icon())
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight(),
+            )
+        } else {
+            row!(button::menu_small(home_icon())
+                .on_press(Message::Menu(Menu::Vault(VaultSubMenu::Home)))
+                .width(iced::Length::Fill),)
+        };
+
+        // Vault Send
+        let vault_send_button = if matches!(menu, Menu::Vault(VaultSubMenu::Send)) {
+            row!(
+                button::menu_active_small(send_icon())
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
+            )
+        } else {
+            row!(button::menu_small(send_icon())
+                .on_press(Message::Menu(Menu::Vault(VaultSubMenu::Send)))
+                .width(iced::Length::Fill),)
+        };
+
+        // Vault Receive
+        let vault_receive_button = if matches!(menu, Menu::Vault(VaultSubMenu::Receive)) {
+            row!(
+                button::menu_active_small(receive_icon())
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
+            )
+        } else {
+            row!(button::menu_small(receive_icon())
+                .on_press(Message::Menu(Menu::Vault(VaultSubMenu::Receive)))
+                .width(iced::Length::Fill),)
+        };
+
+        // Vault Coins
+        let vault_coins_button = if matches!(menu, Menu::Vault(VaultSubMenu::Coins(_))) {
+            row!(
+                button::menu_active_small(coins_icon())
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
+            )
+        } else {
+            row!(button::menu_small(coins_icon())
+                .on_press(Message::Menu(Menu::Vault(VaultSubMenu::Coins(None))))
+                .width(iced::Length::Fill),)
+        };
+
+        // Vault Transactions
+        let vault_transactions_button =
+            if matches!(menu, Menu::Vault(VaultSubMenu::Transactions(_))) {
+                row!(
+                    button::menu_active_small(history_icon())
+                        .on_press(Message::Reload)
+                        .width(iced::Length::Fill),
+                    menu_bar_highlight()
+                )
+            } else {
+                row!(button::menu_small(history_icon())
+                    .on_press(Message::Menu(Menu::Vault(VaultSubMenu::Transactions(None))))
+                    .width(iced::Length::Fill),)
+            };
+
+        // Vault PSBTs
+        let vault_psbts_button = if matches!(menu, Menu::Vault(VaultSubMenu::PSBTs(_))) {
+            row!(
+                button::menu_active_small(history_icon())
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
+            )
+        } else {
+            row!(button::menu_small(history_icon())
+                .on_press(Message::Menu(Menu::Vault(VaultSubMenu::PSBTs(None))))
+                .width(iced::Length::Fill),)
+        };
+
+        // Vault Recovery
+        let vault_recovery_button = if matches!(menu, Menu::Vault(VaultSubMenu::Recovery)) {
+            row!(
+                button::menu_active_small(recovery_icon())
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
+            )
+        } else {
+            row!(button::menu_small(recovery_icon())
+                .on_press(Message::Menu(Menu::Vault(VaultSubMenu::Recovery)))
+                .width(iced::Length::Fill),)
+        };
+
+        // Vault Settings
+        let vault_settings_button = if matches!(menu, Menu::Vault(VaultSubMenu::Settings(_))) {
+            row!(
+                button::menu_active_small(settings_icon())
+                    .on_press(Message::Reload)
+                    .width(iced::Length::Fill),
+                menu_bar_highlight()
+            )
+        } else {
+            row!(button::menu_small(settings_icon())
+                .on_press(Message::Menu(Menu::Vault(VaultSubMenu::Settings(None))))
+                .width(iced::Length::Fill),)
+        };
+
+        menu_column = menu_column
+            .push(vault_home_button)
+            .push(vault_send_button)
+            .push(vault_receive_button)
+            .push(vault_coins_button)
+            .push(vault_transactions_button)
+            .push(vault_psbts_button)
+            .push(vault_recovery_button)
+            .push(vault_settings_button);
+    }
+
+    // Buy/Sell button
     #[cfg(feature = "buysell")]
     let buy_sell_button = if *menu == Menu::BuySell {
         row!(
@@ -428,64 +727,18 @@ pub fn small_sidebar<'a>(menu: &Menu, cache: &'a Cache, _activate_expanded: bool
             .width(iced::Length::Fill))
     };
 
-    #[cfg(feature = "breez")]
-    let is_activate_selected_small = matches!(menu, Menu::Activate(_));
-
-    let settings_button = if *menu == Menu::Settings {
-        row!(
-            button::menu_active_small(settings_icon())
-                .on_press(Message::Menu(Menu::Settings))
-                .width(iced::Length::Fill),
-            menu_bar_highlight()
-        )
-    } else {
-        row!(button::menu_small(settings_icon())
-            .on_press(Message::Menu(Menu::Settings))
-            .width(iced::Length::Fill))
-    };
+    // Add Buy/Sell button to menu column (only if vault exists)
+    #[cfg(feature = "buysell")]
+    {
+        if has_vault {
+            menu_column = menu_column.push(buy_sell_button);
+        }
+    }
 
     Container::new(
         Column::new()
             .push(
-                Column::new()
-                    .push(liana_logotype().width(Length::Fixed(85.0)))
-                    .push(home_button)
-                    .push(spend_button)
-                    .push(receive_button)
-                    .push(coins_button)
-                    .push(transactions_button)
-                    .push(psbt_button)
-                    .push_maybe({
-                        #[cfg(feature = "buysell")]
-                        {
-                            Some(buy_sell_button)
-                        }
-                        #[cfg(not(feature = "buysell"))]
-                        {
-                            None::<Row<'_, Message>>
-                        }
-                    })
-                    .push_maybe({
-                        #[cfg(feature = "breez")]
-                        {
-                            if is_activate_selected_small {
-                                Some(row!(
-                                    button::menu_active_small(send_icon())
-                                        .on_press(Message::ToggleActivateMenu)
-                                        .width(iced::Length::Fill),
-                                    menu_bar_highlight()
-                                ))
-                            } else {
-                                Some(row!(button::menu_small(send_icon())
-                                    .on_press(Message::ToggleActivateMenu)
-                                    .width(iced::Length::Fill)))
-                            }
-                        }
-                        #[cfg(not(feature = "breez"))]
-                        {
-                            None::<Row<'_, Message>>
-                        }
-                    })
+                menu_column
                     .align_x(iced::Alignment::Center)
                     .height(Length::Fill),
             )
@@ -497,9 +750,7 @@ pub fn small_sidebar<'a>(menu: &Menu, cache: &'a Cache, _activate_expanded: bool
                             Container::new(text(format!("{:.2}%  ", p * 100.0)))
                                 .padding(5)
                                 .style(theme::pill::simple)
-                        }))
-                        .push(recovery_button)
-                        .push(settings_button),
+                        })),
                 )
                 .height(Length::Shrink),
             )
@@ -514,18 +765,14 @@ pub fn dashboard<'a, T: Into<Element<'a, Message>>>(
     warning: Option<&Error>,
     content: T,
 ) -> Element<'a, Message> {
-    #[cfg(feature = "breez")]
-    let activate_expanded = cache.activate_expanded;
-    #[cfg(not(feature = "breez"))]
-    let activate_expanded = false;
-    
+    let has_vault = cache.has_vault; // Copy the bool value before moving into closure
     Row::new()
         .push(
             Container::new(responsive(move |size| {
                 if size.width > 150.0 {
-                    sidebar(menu, cache, activate_expanded).height(Length::Fill).into()
+                    sidebar(menu, cache, has_vault).height(Length::Fill).into()
                 } else {
-                    small_sidebar(menu, cache, activate_expanded).height(Length::Fill).into()
+                    small_sidebar(menu, cache, has_vault).height(Length::Fill).into()
                 }
             }))
             .width(Length::FillPortion(20)),
@@ -595,4 +842,3 @@ fn modal_section<'a, T: 'a>(menu: Container<'a, T>) -> Container<'a, T> {
         .width(Length::Fill)
         .height(Length::Fill)
 }
-

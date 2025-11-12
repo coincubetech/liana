@@ -24,7 +24,7 @@ use lianad::{
 
 use crate::app;
 use crate::app::cache::DaemonCache;
-use crate::app::settings::WalletSettings;
+use crate::app::settings::{CubeSettings, WalletSettings};
 use crate::backup::Backup;
 use crate::dir::LianaDirectory;
 use crate::export::RestoreBackupError;
@@ -63,7 +63,8 @@ pub struct Loader {
     pub internal_bitcoind: Option<Bitcoind>,
     pub waiting_daemon_bitcoind: bool,
     pub backup: Option<Backup>,
-    pub wallet_settings: WalletSettings,
+    pub wallet_settings: Option<WalletSettings>,
+    pub cube_settings: CubeSettings,
     step: Step,
 }
 
@@ -83,6 +84,21 @@ pub enum Step {
 pub enum Message {
     View(ViewMessage),
     Syncing(Result<GetInfoResult, DaemonError>),
+    #[cfg(feature = "breez")]
+    Synced(
+        Result<
+            (
+                Arc<Wallet>,
+                Cache,
+                Arc<dyn Daemon + Sync + Send>,
+                Option<Bitcoind>,
+                Option<Backup>,
+                Option<crate::app::breez::wallet::BreezWalletManager>,
+            ),
+            Error,
+        >,
+    ),
+    #[cfg(not(feature = "breez"))]
     Synced(
         Result<
             (
@@ -95,6 +111,23 @@ pub enum Message {
             Error,
         >,
     ),
+    #[cfg(feature = "breez")]
+    App(
+        Result<
+            (
+                Cache,
+                Arc<Wallet>,
+                app::Config,
+                Arc<dyn Daemon + Sync + Send>,
+                LianaDirectory,
+                Option<Bitcoind>,
+                Option<crate::app::breez::wallet::BreezWalletManager>,
+            ),
+            Error,
+        >,
+        /* restored_from_backup */ bool,
+    ),
+    #[cfg(not(feature = "breez"))]
     App(
         Result<
             (
@@ -123,12 +156,20 @@ impl Loader {
         network: bitcoin::Network,
         internal_bitcoind: Option<Bitcoind>,
         backup: Option<Backup>,
-        wallet_settings: WalletSettings,
+        wallet_settings: Option<WalletSettings>,
+        cube_settings: CubeSettings,
     ) -> (Self, Task<Message>) {
-        let socket_path = datadir_path
-            .network_directory(network)
-            .lianad_data_directory(&wallet_settings.wallet_id())
-            .lianad_rpc_socket_path();
+        let task = if let Some(ref wallet) = wallet_settings {
+            let socket_path = datadir_path
+                .network_directory(network)
+                .lianad_data_directory(&wallet.wallet_id())
+                .lianad_rpc_socket_path();
+            Task::perform(connect(socket_path), Message::Loaded)
+        } else {
+            // No vault configured - loader will show setup screen
+            Task::none()
+        };
+        
         (
             Loader {
                 network,
@@ -139,17 +180,22 @@ impl Loader {
                 internal_bitcoind,
                 waiting_daemon_bitcoind: false,
                 wallet_settings,
+                cube_settings,
                 backup,
             },
-            Task::perform(connect(socket_path), Message::Loaded),
+            task,
         )
     }
 
     fn start_bitcoind(&self) -> bool {
         if self.internal_bitcoind.is_some() {
             false
-        } else if let Some(start) = self.wallet_settings.start_internal_bitcoind {
-            start
+        } else if let Some(wallet) = &self.wallet_settings {
+            if let Some(start) = wallet.start_internal_bitcoind {
+                start
+            } else {
+                self.gui_config.start_internal_bitcoind
+            }
         } else {
             self.gui_config.start_internal_bitcoind
         }
@@ -160,12 +206,16 @@ impl Loader {
         daemon: Arc<dyn Daemon + Sync + Send>,
         info: GetInfoResult,
     ) -> Task<Message> {
+        // If no wallet is configured, this shouldn't be called
+        let wallet_settings = self.wallet_settings.clone()
+            .expect("wallet_settings must be Some when loading");
+        
         // If the node is not Bitcoin Core or otherwise the wallet was previously synced (blockheight > 0),
         // load the application directly.
         if daemon.backend().node_type() != Some(NodeType::Bitcoind) || info.block_height > 0 {
             return Task::perform(
                 load_application(
-                    self.wallet_settings.clone(),
+                    wallet_settings,
                     daemon,
                     info,
                     self.datadir_path.clone(),
@@ -203,6 +253,8 @@ impl Loader {
                 Error::Daemon(DaemonError::ClientNotSupported)
                 | Error::Daemon(DaemonError::RpcSocket(Some(ErrorKind::ConnectionRefused), _))
                 | Error::Daemon(DaemonError::RpcSocket(Some(ErrorKind::NotFound), _)) => {
+                    let wallet_settings = self.wallet_settings.clone()
+                        .expect("wallet_settings must be Some when starting daemon");
                     self.step = Step::StartingDaemon;
                     self.daemon_started = true;
                     self.waiting_daemon_bitcoind = true;
@@ -211,7 +263,7 @@ impl Loader {
                             self.datadir_path.clone(),
                             self.start_bitcoind(),
                             self.network,
-                            self.wallet_settings.clone(),
+                            wallet_settings,
                         ),
                         Message::Started,
                     );
@@ -259,9 +311,11 @@ impl Loader {
                 match res {
                     Ok(info) => {
                         if (info.sync - 1.0_f64).abs() < f64::EPSILON {
+                            let wallet_settings = self.wallet_settings.clone()
+                                .expect("wallet_settings must be Some when syncing");
                             return Task::perform(
                                 load_application(
-                                    self.wallet_settings.clone(),
+                                    wallet_settings,
                                     daemon.clone(),
                                     info,
                                     self.datadir_path.clone(),
@@ -316,6 +370,7 @@ impl Loader {
                     self.internal_bitcoind.clone(),
                     self.backup.clone(),
                     self.wallet_settings.clone(),
+                    self.cube_settings.clone(),
                 );
                 *self = loader;
                 cmd
@@ -411,6 +466,116 @@ fn get_bitcoind_log(log_path: PathBuf) -> impl Stream<Item = Option<String>> {
     })
 }
 
+#[cfg(feature = "breez")]
+pub async fn load_application(
+    wallet_settings: WalletSettings,
+    daemon: Arc<dyn Daemon + Sync + Send>,
+    info: GetInfoResult,
+    datadir_path: LianaDirectory,
+    network: bitcoin::Network,
+    internal_bitcoind: Option<Bitcoind>,
+    backup: Option<Backup>,
+) -> Result<
+    (
+        Arc<Wallet>,
+        Cache,
+        Arc<dyn Daemon + Sync + Send>,
+        Option<Bitcoind>,
+        Option<Backup>,
+        Option<crate::app::breez::wallet::BreezWalletManager>,
+    ),
+    Error,
+> {
+    tracing::info!("🚀 load_application called for wallet loading");
+    let wallet = Wallet::new(info.descriptors.main)
+        .load_from_settings(wallet_settings)?
+        .load_hotsigners(&datadir_path, network)?;
+    tracing::info!("📦 Wallet loaded: {}", wallet.name);
+    
+    // Auto-create and initialize Lightning wallet when vault loads
+    #[cfg(feature = "breez")]
+    let breez_manager = {
+        use crate::app::breez::{storage, wallet::BreezWalletManager};
+        
+        let network_dir = datadir_path.network_directory(network);
+        let wallet_checksum = &wallet.descriptor_checksum;
+        
+        // Auto-create if doesn't exist
+        if !storage::lightning_wallet_exists(network_dir.path(), wallet_checksum) {
+            match storage::generate_lightning_mnemonic() {
+                Ok(mnemonic) => {
+                    match storage::store_lightning_mnemonic(network_dir.path(), wallet_checksum, &mnemonic) {
+                        Ok(_) => {
+                            tracing::info!("✅ Auto-created Lightning wallet for Cube: {}", wallet.name);
+                            tracing::info!("📁 Lightning wallet stored at: {}/lightning/", wallet_checksum);
+                        }
+                        Err(e) => {
+                            tracing::error!("❌ Failed to store Lightning wallet for Cube {}: {}", wallet.name, e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("❌ Failed to generate Lightning mnemonic for Cube {}: {}", wallet.name, e);
+                }
+            }
+        } else {
+            tracing::info!("⚡ Lightning wallet already exists for Cube: {}", wallet.name);
+        }
+        
+        // Initialize Breez SDK
+        tracing::debug!("📂 Attempting to load Lightning mnemonic from: {}/lightning/", wallet_checksum);
+        match storage::load_lightning_mnemonic(network_dir.path(), wallet_checksum) {
+            Ok(mnemonic) => {
+                tracing::info!("🔌 Initializing Breez SDK for Cube: {}", wallet.name);
+                tracing::debug!("✓ Mnemonic loaded, initializing at: {}/breez/", wallet_checksum);
+                match BreezWalletManager::initialize(&mnemonic, network, network_dir.path()).await {
+                    Ok(manager) => {
+                        tracing::info!("✅ Breez SDK initialized successfully for Cube: {}", wallet.name);
+                        Some(manager)
+                    }
+                    Err(e) => {
+                        tracing::error!("❌ Failed to initialize Breez SDK for Cube {}: {:?}", wallet.name, e);
+                        tracing::error!("   This might be a network issue, API key problem, or SDK error");
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("❌ Failed to load Lightning mnemonic for Cube {}: {:?}", wallet.name, e);
+                tracing::error!("   Expected mnemonic file at: {}/lightning/mnemonic", wallet_checksum);
+                None
+            }
+        }
+    };
+    
+    #[cfg(not(feature = "breez"))]
+    let breez_manager: Option<()> = None;
+
+    let coins = coins_to_cache(daemon.clone()).await.map(|res| res.coins)?;
+
+    // Both last poll fields start with the same value.
+    let cache = Cache {
+        datadir_path,
+        network: info.network,
+        last_poll_at_startup: info.last_poll_timestamp,
+        daemon_cache: DaemonCache {
+            blockheight: info.block_height,
+            coins,
+            sync_progress: info.sync,
+            last_poll_timestamp: info.last_poll_timestamp,
+            ..Default::default()
+        },
+        fiat_price: None,
+        vault_expanded: true,
+        active_expanded: false,
+        has_vault: true,
+    };
+
+    tracing::info!("📤 load_application returning breez_manager present: {}", breez_manager.is_some());
+    Ok((Arc::new(wallet), cache, daemon, internal_bitcoind, backup, breez_manager))
+}
+
+#[cfg(not(feature = "breez"))]
 pub async fn load_application(
     wallet_settings: WalletSettings,
     daemon: Arc<dyn Daemon + Sync + Send>,
@@ -435,7 +600,6 @@ pub async fn load_application(
 
     let coins = coins_to_cache(daemon.clone()).await.map(|res| res.coins)?;
 
-    // Both last poll fields start with the same value.
     let cache = Cache {
         datadir_path,
         network: info.network,
@@ -448,8 +612,9 @@ pub async fn load_application(
             ..Default::default()
         },
         fiat_price: None,
-        #[cfg(feature = "breez")]
-        activate_expanded: false,
+        vault_expanded: true,
+        active_expanded: false,
+        has_vault: true,
     };
 
     Ok((Arc::new(wallet), cache, daemon, internal_bitcoind, backup))
@@ -459,6 +624,7 @@ pub async fn load_application(
 pub enum ViewMessage {
     Retry,
     SwitchNetwork,
+    SetupVault,
 }
 
 pub fn view(step: &Step) -> Element<ViewMessage> {

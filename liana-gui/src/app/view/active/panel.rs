@@ -1,4 +1,4 @@
-//! Activate panel - Main UI for Breez SDK integration
+//! Active panel - Main UI for Breez SDK integration
 
 use std::path::PathBuf;
 use iced::{widget::{container, scrollable, Space, TextInput}, Length};
@@ -10,10 +10,10 @@ use liana_ui::{
     widget::*,
 };
 
-use super::ActivateSubPanel;
+use super::ActiveSubPanel;
 use crate::app::{
     cache::Cache,
-    view::{ActivateMessage, Message as ViewMessage},
+    view::{ActiveMessage, Message as ViewMessage},
 };
 use liana_ui::component::text::Text as TextTrait;
 
@@ -26,8 +26,8 @@ use breez_sdk_liquid::prelude::{
     PrepareSendResponse,
 };
 
-pub struct ActivatePanel {
-    pub active_panel: ActivateSubPanel,
+pub struct ActivePanel {
+    pub active_panel: ActiveSubPanel,
     pub error: Option<String>,
     pub network: Network,
 
@@ -61,7 +61,7 @@ pub struct ActivatePanel {
     pub lightning_address: Option<String>,
 
     // Wallet data
-    pub wallet: std::sync::Arc<crate::app::wallet::Wallet>,
+    pub wallet: Option<std::sync::Arc<crate::app::wallet::Wallet>>,
     pub data_dir: crate::dir::LianaDirectory,
 }
 
@@ -82,10 +82,10 @@ pub enum LightningWalletState {
 
 // LightningWalletState is now used directly in parent modules
 
-impl ActivatePanel {
+impl ActivePanel {
     pub fn new(
         network: Network,
-        wallet: std::sync::Arc<crate::app::wallet::Wallet>,
+        wallet: Option<std::sync::Arc<crate::app::wallet::Wallet>>,
         data_dir: crate::dir::LianaDirectory,
     ) -> Self {
         // Check if Lightning wallet already exists for this specific Bitcoin wallet
@@ -93,24 +93,28 @@ impl ActivatePanel {
         // happens separately and will update state to Ready when complete
         #[cfg(feature = "breez")]
         let lightning_wallet_state = {
-            let network_dir = data_dir.network_directory(network);
-            let wallet_checksum = &wallet.descriptor_checksum;
-            let wallet_exists = crate::app::breez::storage::lightning_wallet_exists(network_dir.path(), wallet_checksum);
-            
-            // Wallet initialization check
-            log::debug!("Lightning wallet check for wallet {}: exists={}", wallet_checksum, wallet_exists);
-            
-            if wallet_exists {
-                // Wallet file exists - SDK will be initialized automatically
-                // State will change to Ready after successful connection
-                LightningWalletState::Initializing
+            if let Some(ref w) = wallet {
+                let network_dir = data_dir.network_directory(network);
+                let wallet_checksum = &w.descriptor_checksum;
+                let wallet_exists = crate::app::breez::storage::lightning_wallet_exists(network_dir.path(), wallet_checksum);
+                
+                // Wallet initialization check
+                log::debug!("Lightning wallet check for wallet {}: exists={}", wallet_checksum, wallet_exists);
+                
+                if wallet_exists {
+                    // Wallet file exists - SDK will be initialized automatically
+                    // State will change to Ready after successful connection
+                    LightningWalletState::Initializing
+                } else {
+                    LightningWalletState::NotCreated
+                }
             } else {
                 LightningWalletState::NotCreated
             }
         };
 
         let panel = Self {
-            active_panel: ActivateSubPanel::Main,
+            active_panel: ActiveSubPanel::Main,
             error: None,
             network,
             #[cfg(feature = "breez")]
@@ -141,6 +145,44 @@ impl ActivatePanel {
         panel
     }
     
+    /// Create empty panel without wallet
+    pub fn new_empty(
+        network: Network,
+        data_dir: crate::dir::LianaDirectory,
+    ) -> Self {
+        #[cfg(feature = "breez")]
+        let lightning_wallet_state = LightningWalletState::NotCreated;
+        
+        Self {
+            active_panel: ActiveSubPanel::Main,
+            error: None,
+            network,
+            #[cfg(feature = "breez")]
+            lightning_wallet_state,
+            #[cfg(feature = "breez")]
+            breez_manager: None,
+            #[cfg(feature = "breez")]
+            balance: None,
+            destination: String::new(),
+            amount: String::new(),
+            destination_valid: false,
+            amount_valid: false,
+            #[cfg(feature = "breez")]
+            prepare_send_response: None,
+            #[cfg(feature = "breez")]
+            payment_limits: None,
+            preparing: false,
+            sending: false,
+            description: String::new(),
+            #[cfg(feature = "breez")]
+            generated_invoice: None,
+            #[cfg(feature = "breez")]
+            lightning_address: None,
+            wallet: None,
+            data_dir,
+        }
+    }
+    
     /// Check if SDK initialization should be triggered
     /// This checks panel-level state only. The app-level check should be done separately.
     #[cfg(feature = "breez")]
@@ -165,8 +207,9 @@ impl ActivatePanel {
             return Ok(None);
         }
         
+        let wallet = self.wallet.as_ref().ok_or_else(|| "No wallet available".to_string())?;
         let network_dir = self.data_dir.network_directory(self.network);
-        let wallet_checksum = &self.wallet.descriptor_checksum;
+        let wallet_checksum = &wallet.descriptor_checksum;
         
         // Load mnemonic from storage
         match crate::app::breez::storage::load_lightning_mnemonic(network_dir.path(), wallet_checksum) {
@@ -190,25 +233,26 @@ impl ActivatePanel {
     /// Check if Lightning wallet file exists but is corrupted/unreadable
     #[cfg(feature = "breez")]
     pub fn is_wallet_corrupted(&self) -> bool {
+        let Some(wallet) = self.wallet.as_ref() else { return false; };
         let network_dir = self.data_dir.network_directory(self.network);
-        let wallet_checksum = &self.wallet.descriptor_checksum;
+        let wallet_checksum = &wallet.descriptor_checksum;
         
         // File exists but can't be loaded = corrupted
         crate::app::breez::storage::lightning_wallet_exists(network_dir.path(), wallet_checksum)
             && crate::app::breez::storage::load_lightning_mnemonic(network_dir.path(), wallet_checksum).is_err()
     }
 
-    pub fn view<'a>(&'a self, cache: &'a Cache) -> Element<'a, ViewMessage> {
+    pub fn view<'a>(&'a self, _cache: &'a Cache) -> Element<'a, ViewMessage> {
         // Create header with logo, network, and wallet address (similar to buysell)
-        let header = self.view_header(cache);
+        let header = self.view_header();
         
         // Get panel content
         let content = match self.active_panel {
-            ActivateSubPanel::Main => self.view_main(cache),
-            ActivateSubPanel::Send => self.view_send(cache),
-            ActivateSubPanel::Receive => self.view_receive(cache),
-            ActivateSubPanel::History => self.view_history(cache),
-            ActivateSubPanel::Settings => self.view_settings(cache),
+            ActiveSubPanel::Main => self.view_main(),
+            ActiveSubPanel::Send => self.view_send(),
+            ActiveSubPanel::Receive => self.view_receive(),
+            ActiveSubPanel::History => self.view_history(),
+            ActiveSubPanel::Settings => self.view_settings(),
         };
         
         // Combine header + content (matching buysell structure)
@@ -219,13 +263,18 @@ impl ActivatePanel {
             .into()
     }
     
-    fn view_header<'a>(&'a self, _cache: &'a Cache) -> Element<'a, ViewMessage> {
+    fn view_header<'a>(&'a self) -> Element<'a, ViewMessage> {
         // Derive Bitcoin address from wallet descriptor at index 0
-        let secp = liana::miniscript::bitcoin::secp256k1::Secp256k1::verification_only();
-        let receive_desc = self.wallet.main_descriptor.receive_descriptor();
-        let address = receive_desc
-            .derive(0.into(), &secp)
-            .address(self.network);
+        let address_text = if let Some(wallet) = &self.wallet {
+            let secp = liana::miniscript::bitcoin::secp256k1::Secp256k1::verification_only();
+            let receive_desc = wallet.main_descriptor.receive_descriptor();
+            receive_desc
+                .derive(0.into(), &secp)
+                .address(self.network)
+                .to_string()
+        } else {
+            "No wallet".to_string()
+        };
         
         // Create header matching buysell panel structure
         Column::new()
@@ -274,7 +323,7 @@ impl ActivatePanel {
                                 .color(color::GREY_3)
                         )
                         .push(
-                            ui_text::p1_regular(&address.to_string())
+                            ui_text::p1_regular(&address_text)
                                 .color(color::GREY_3)
                         )
                         .align_x(iced::Alignment::Center)
@@ -319,7 +368,7 @@ impl ActivatePanel {
             .into()
     }
 
-    fn view_main<'a>(&'a self, _cache: &'a Cache) -> Element<'a, ViewMessage> {
+    fn view_main<'a>(&'a self) -> Element<'a, ViewMessage> {
         let mut col = Column::new()
             .spacing(20)
             .padding(20);
@@ -579,12 +628,12 @@ impl ActivatePanel {
                             .spacing(10)
                             .push(
                                 ui_button::primary(None, "Reset & Create New")
-                                    .on_press(ViewMessage::Activate(ActivateMessage::CreateLightningWallet))
+                                    .on_press(ViewMessage::Active(ActiveMessage::CreateLightningWallet))
                                     .width(Length::Fill)
                             )
                             .push(
                                 ui_button::secondary(None, "Import Existing Wallet")
-                                    .on_press(ViewMessage::Activate(ActivateMessage::ShowImportWallet))
+                                    .on_press(ViewMessage::Active(ActiveMessage::ShowImportWallet))
                                     .width(Length::Fill)
                             )
                     } else {
@@ -592,12 +641,12 @@ impl ActivatePanel {
                             .spacing(10)
                             .push(
                                 ui_button::primary(None, "Create New Wallet")
-                                    .on_press(ViewMessage::Activate(ActivateMessage::CreateLightningWallet))
+                                    .on_press(ViewMessage::Active(ActiveMessage::CreateLightningWallet))
                                     .width(Length::Fill)
                             )
                             .push(
                                 ui_button::secondary(None, "Import Existing Wallet")
-                                    .on_press(ViewMessage::Activate(ActivateMessage::ShowImportWallet))
+                                    .on_press(ViewMessage::Active(ActiveMessage::ShowImportWallet))
                                     .width(Length::Fill)
                             )
                     }
@@ -655,7 +704,7 @@ impl ActivatePanel {
                                 "word1 word2 word3 ... word24",
                                 mnemonic_input
                             )
-                            .on_input(|value| ViewMessage::Activate(ActivateMessage::ImportMnemonicEdited(value)))
+                            .on_input(|value| ViewMessage::Active(ActiveMessage::ImportMnemonicEdited(value)))
                             .padding(15)
                             .size(14)
                         )
@@ -693,12 +742,12 @@ impl ActivatePanel {
                         .spacing(10)
                         .push(
                             ui_button::secondary(None, "Cancel")
-                                .on_press(ViewMessage::Activate(ActivateMessage::CancelImport))
+                                .on_press(ViewMessage::Active(ActiveMessage::CancelImport))
                                 .width(Length::Fill)
                         )
                         .push(
                             ui_button::primary(None, "Import Wallet")
-                                .on_press(ViewMessage::Activate(ActivateMessage::ConfirmImport))
+                                .on_press(ViewMessage::Active(ActiveMessage::ConfirmImport))
                                 .width(Length::Fill)
                         )
                 )
@@ -784,7 +833,7 @@ impl ActivatePanel {
                 )
                 .push(
                     ui_button::primary(None, "I Have Backed Up My Recovery Phrase")
-                        .on_press(ViewMessage::Activate(ActivateMessage::ConfirmBackup))
+                        .on_press(ViewMessage::Active(ActiveMessage::ConfirmBackup))
                         .width(Length::Fill)
                 )
         )
@@ -837,7 +886,7 @@ impl ActivatePanel {
         // Refresh button
         col = col.push(
             ui_button::secondary(None, "Refresh")
-                .on_press(ViewMessage::Activate(ActivateMessage::RefreshBalance))
+                .on_press(ViewMessage::Active(ActiveMessage::RefreshBalance))
                 .width(Length::Shrink)
         );
 
@@ -847,7 +896,7 @@ impl ActivatePanel {
             .into()
     }
 
-    fn view_send<'a>(&'a self, _cache: &'a Cache) -> Element<'a, ViewMessage> {
+    fn view_send<'a>(&'a self) -> Element<'a, ViewMessage> {
         let mut col = Column::new()
             .spacing(20)
             .padding(20);
@@ -861,7 +910,7 @@ impl ActivatePanel {
                 .push(TextTrait::small(ui_text::text("Lightning Invoice or Address")))
                 .push(
                     TextInput::new("lnbc... or address", &self.destination)
-                        .on_input(|value| ViewMessage::Activate(ActivateMessage::DestinationEdited(value)))
+                        .on_input(|value| ViewMessage::Active(ActiveMessage::DestinationEdited(value)))
                         .padding(12)
                         .size(16)
                 )
@@ -874,7 +923,7 @@ impl ActivatePanel {
                 .push(TextTrait::small(ui_text::text("Amount (sats)")))
                 .push(
                     TextInput::new("1000", &self.amount)
-                        .on_input(|value| ViewMessage::Activate(ActivateMessage::AmountEdited(value)))
+                        .on_input(|value| ViewMessage::Active(ActiveMessage::AmountEdited(value)))
                         .padding(12)
                         .size(16)
                 )
@@ -887,7 +936,7 @@ impl ActivatePanel {
                 .push(TextTrait::small(ui_text::text("Description (optional)")))
                 .push(
                     TextInput::new("Payment note", &self.description)
-                        .on_input(|value| ViewMessage::Activate(ActivateMessage::DescriptionEdited(value)))
+                        .on_input(|value| ViewMessage::Active(ActiveMessage::DescriptionEdited(value)))
                         .padding(12)
                         .size(16)
                 )
@@ -901,7 +950,7 @@ impl ActivatePanel {
                 let prepare_enabled = self.destination_valid && self.amount_valid && !self.preparing;
                 let prepare_button = if prepare_enabled {
                     ui_button::primary(None, if self.preparing { "Preparing..." } else { "Prepare Payment" })
-                        .on_press(ViewMessage::Activate(ActivateMessage::PrepareSend))
+                        .on_press(ViewMessage::Active(ActiveMessage::PrepareSend))
                 } else {
                     ui_button::primary(None, "Prepare Payment")
                 };
@@ -911,7 +960,7 @@ impl ActivatePanel {
                     .push(prepare_button.width(Length::Fill))
                     .push(
                         ui_button::secondary(None, "Back")
-                            .on_press(ViewMessage::Activate(ActivateMessage::ShowMainPanel))
+                            .on_press(ViewMessage::Active(ActiveMessage::ShowMainPanel))
                             .width(Length::Fill)
                     )
             } else {
@@ -920,7 +969,7 @@ impl ActivatePanel {
                     ui_button::primary(None, "Sending...")
                 } else {
                     ui_button::primary(None, "Send Payment")
-                        .on_press(ViewMessage::Activate(ActivateMessage::SendPayment))
+                        .on_press(ViewMessage::Active(ActiveMessage::SendPayment))
                 };
                 
                 Row::new()
@@ -928,7 +977,7 @@ impl ActivatePanel {
                     .push(send_button.width(Length::Fill))
                     .push(
                         ui_button::secondary(None, "Back")
-                            .on_press(ViewMessage::Activate(ActivateMessage::ShowMainPanel))
+                            .on_press(ViewMessage::Active(ActiveMessage::ShowMainPanel))
                             .width(Length::Fill)
                     )
             };
@@ -1020,7 +1069,7 @@ impl ActivatePanel {
         col.into()
     }
 
-    fn view_receive<'a>(&'a self, _cache: &'a Cache) -> Element<'a, ViewMessage> {
+    fn view_receive<'a>(&'a self) -> Element<'a, ViewMessage> {
         let mut col = Column::new()
             .spacing(20)
             .padding(20);
@@ -1069,7 +1118,7 @@ impl ActivatePanel {
                 .push(TextTrait::small(ui_text::text("Description (optional)")))
                 .push(
                     TextInput::new("What is this payment for?", &self.description)
-                        .on_input(|value| ViewMessage::Activate(ActivateMessage::DescriptionEdited(value)))
+                        .on_input(|value| ViewMessage::Active(ActiveMessage::DescriptionEdited(value)))
                         .padding(12)
                         .size(16)
                 )
@@ -1125,7 +1174,7 @@ impl ActivatePanel {
         let generate_btn = ui_button::primary(None, "Generate Invoice")
             .width(Length::Shrink);
         buttons = buttons.push(if can_generate {
-            generate_btn.on_press(ViewMessage::Activate(ActivateMessage::GenerateInvoice))
+            generate_btn.on_press(ViewMessage::Active(ActiveMessage::GenerateInvoice))
         } else {
             generate_btn
         });
@@ -1238,7 +1287,7 @@ impl ActivatePanel {
             .into()
     }
 
-    fn view_settings<'a>(&'a self, _cache: &'a Cache) -> Element<'a, ViewMessage> {
+    fn view_settings<'a>(&'a self) -> Element<'a, ViewMessage> {
         let mut col = Column::new()
             .spacing(20)
             .padding(20);
@@ -1316,7 +1365,8 @@ impl ActivatePanel {
     }
 
     #[allow(dead_code)]
-    fn view_history<'a>(&'a self, _cache: &'a Cache) -> Element<'a, ViewMessage> {
+    #[allow(dead_code)]
+    fn view_history<'a>(&'a self) -> Element<'a, ViewMessage> {
         let mut col = Column::new()
             .spacing(20)
             .padding(20);
@@ -1329,7 +1379,7 @@ impl ActivatePanel {
                 .push(Space::with_width(Length::Fill))
                 .push(
                     ui_button::secondary(None, "Refresh")
-                        .on_press(ViewMessage::Activate(ActivateMessage::RefreshHistory))
+                        .on_press(ViewMessage::Active(ActiveMessage::RefreshHistory))
                         .width(Length::Shrink)
                 )
         );
@@ -1396,9 +1446,9 @@ impl ActivatePanel {
         iced::Task::perform(
             async move { send_manager.prepare_send(destination, amount_sat).await },
             |result| {
-                crate::app::message::Message::View(ViewMessage::Activate(match result {
-                    Ok(response) => ActivateMessage::PaymentPrepared(response),
-                    Err(e) => ActivateMessage::PrepareFailed(e.to_string()),
+                crate::app::message::Message::View(ViewMessage::Active(match result {
+                    Ok(response) => ActiveMessage::PaymentPrepared(response),
+                    Err(e) => ActiveMessage::PrepareFailed(e.to_string()),
                 }))
             },
         )
@@ -1435,12 +1485,12 @@ impl ActivatePanel {
         iced::Task::perform(
             async move { send_manager.send_payment(&prep_response_clone).await },
             |result| {
-                crate::app::message::Message::View(ViewMessage::Activate(match result {
-                    Ok(response) => ActivateMessage::PaymentSent(format!(
+                crate::app::message::Message::View(ViewMessage::Active(match result {
+                    Ok(response) => ActiveMessage::PaymentSent(format!(
                         "Payment sent successfully! TX: {}",
                         response.payment.tx_id.clone().unwrap_or_default()
                     )),
-                    Err(e) => ActivateMessage::SendFailed(e.to_string()),
+                    Err(e) => ActiveMessage::SendFailed(e.to_string()),
                 }))
             },
         )
@@ -1467,9 +1517,9 @@ impl ActivatePanel {
                     .await
             },
             |result| {
-                crate::app::message::Message::View(ViewMessage::Activate(match result {
-                    Ok(limits) => ActivateMessage::LimitsFetched(limits.min_sat, limits.max_sat),
-                    Err(_) => ActivateMessage::Error("Failed to fetch limits".to_string()),
+                crate::app::message::Message::View(ViewMessage::Active(match result {
+                    Ok(limits) => ActiveMessage::LimitsFetched(limits.min_sat, limits.max_sat),
+                    Err(_) => ActiveMessage::Error("Failed to fetch limits".to_string()),
                 }))
             },
         )
@@ -1530,9 +1580,9 @@ impl ActivatePanel {
                 Ok(receive_response)
             },
             |result: Result<ReceivePaymentResponse, crate::app::breez::BreezError>| {
-                crate::app::message::Message::View(ViewMessage::Activate(match result {
-                    Ok(response) => ActivateMessage::InvoiceGenerated(response.destination),
-                    Err(e) => ActivateMessage::InvoiceGenerationFailed(e.to_string()),
+                crate::app::message::Message::View(ViewMessage::Active(match result {
+                    Ok(response) => ActiveMessage::InvoiceGenerated(response.destination),
+                    Err(e) => ActiveMessage::InvoiceGenerationFailed(e.to_string()),
                 }))
             },
         )
@@ -1553,9 +1603,9 @@ impl ActivatePanel {
         let receive_manager = BreezReceiveManager::new(sdk);
 
         iced::Task::perform(async move { receive_manager.get_balance().await }, |result| {
-            crate::app::message::Message::View(ViewMessage::Activate(match result {
-                Ok(balance) => ActivateMessage::BalanceUpdated(balance),
-                Err(e) => ActivateMessage::Error(e.to_string()),
+            crate::app::message::Message::View(ViewMessage::Active(match result {
+                Ok(balance) => ActiveMessage::BalanceUpdated(balance),
+                Err(e) => ActiveMessage::Error(e.to_string()),
             }))
         })
     }
@@ -1577,9 +1627,9 @@ impl ActivatePanel {
         iced::Task::perform(
             async move { receive_manager.fetch_receive_limits().await },
             |result| {
-                crate::app::message::Message::View(ViewMessage::Activate(match result {
-                    Ok(limits) => ActivateMessage::LimitsFetched(limits.min_sat, limits.max_sat),
-                    Err(_) => ActivateMessage::Error("Failed to fetch receive limits".to_string()),
+                crate::app::message::Message::View(ViewMessage::Active(match result {
+                    Ok(limits) => ActiveMessage::LimitsFetched(limits.min_sat, limits.max_sat),
+                    Err(_) => ActiveMessage::Error("Failed to fetch receive limits".to_string()),
                 }))
             },
         )

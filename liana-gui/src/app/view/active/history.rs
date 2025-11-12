@@ -10,7 +10,7 @@ use liana_ui::{
     widget::*,
 };
 
-use crate::app::view::{ActivateMessage, Message as ViewMessage};
+use crate::app::view::{ActiveMessage, Message as ViewMessage};
 use liana_ui::component::text::Text as TextTrait;
 
 #[cfg(feature = "breez")]
@@ -88,7 +88,7 @@ pub fn view_history<'a>(
             .push(ui_text::h2("Transaction History"))
             .push(
                 ui_button::secondary(None, "Refresh")
-                    .on_press(ViewMessage::Activate(ActivateMessage::RefreshHistory))
+                    .on_press(ViewMessage::Active(ActiveMessage::RefreshHistory))
                     .width(Length::Shrink)
             )
     );
@@ -162,12 +162,12 @@ fn filter_button(filter: PaymentFilter, current: PaymentFilter) -> Element<'stat
     
     if filter == current {
         ui_button::primary(None, label)
-            .on_press(ViewMessage::Activate(ActivateMessage::FilterChanged(format!("{:?}", filter))))
+            .on_press(ViewMessage::Active(ActiveMessage::FilterChanged(format!("{:?}", filter))))
             .width(Length::Shrink)
             .into()
     } else {
         ui_button::secondary(None, label)
-            .on_press(ViewMessage::Activate(ActivateMessage::FilterChanged(format!("{:?}", filter))))
+            .on_press(ViewMessage::Active(ActiveMessage::FilterChanged(format!("{:?}", filter))))
             .width(Length::Shrink)
             .into()
     }

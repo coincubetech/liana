@@ -30,6 +30,7 @@ pub struct BreezWalletManager {
     pub sdk: Option<Arc<LiquidSdk>>,
     network: bitcoin::Network,
     #[cfg(feature = "breez")]
+    #[allow(dead_code)]
     config: BreezConfig,
 }
 

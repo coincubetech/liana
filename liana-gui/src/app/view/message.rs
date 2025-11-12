@@ -22,6 +22,9 @@ pub enum Message {
     Reload,
     Clipboard(String),
     Menu(Menu),
+    ToggleVault,
+    ToggleActive,
+    SetupVault,
     Close,
     Select(usize),
     SelectPayment(OutPoint),
@@ -35,9 +38,9 @@ pub enum Message {
     #[cfg(feature = "buysell")]
     BuySell(BuySellMessage),
     #[cfg(feature = "breez")]
-    Activate(ActivateMessage),
+    Active(ActiveMessage),
     #[cfg(feature = "breez")]
-    ToggleActivateMenu,
+    ToggleActiveMenu,
     Spend(SpendTxMessage),
     Next,
     Previous,
@@ -253,7 +256,7 @@ impl From<FiatMessage> for Message {
 
 #[cfg(feature = "breez")]
 #[derive(Debug, Clone)]
-pub enum ActivateMessage {
+pub enum ActiveMessage {
     // Panel navigation
     ShowMainPanel,
     ShowSendPanel,

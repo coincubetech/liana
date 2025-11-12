@@ -8,7 +8,7 @@ use liana_ui::{
     widget::*,
 };
 
-use crate::app::view::{ActivateMessage, Message as ViewMessage};
+use crate::app::view::{ActiveMessage, Message as ViewMessage};
 
 #[cfg(feature = "breez")]
 pub fn view_confirmation<'a>(
@@ -114,12 +114,12 @@ pub fn view_confirmation<'a>(
         .spacing(15)
         .push(
             ui_button::secondary(None, "Cancel")
-                .on_press(ViewMessage::Activate(ActivateMessage::CancelPayment))
+                .on_press(ViewMessage::Active(ActiveMessage::CancelPayment))
                 .width(Length::Fill),
         )
         .push(
             ui_button::primary(None, "Confirm & Send")
-                .on_press(ViewMessage::Activate(ActivateMessage::ConfirmPayment))
+                .on_press(ViewMessage::Active(ActiveMessage::ConfirmPayment))
                 .width(Length::Fill),
         );
 

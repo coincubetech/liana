@@ -1,7 +1,15 @@
 use liana::miniscript::bitcoin::{OutPoint, Txid};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Menu {
     Home,
+    Active(ActiveSubMenu),
+    Vault(VaultSubMenu),
+
+    #[cfg(feature = "buysell")]
+    BuySell,
+
+    // Legacy menu items (kept for backward compatibility during transition)
     Receive,
     PSBTs,
     Transactions,
@@ -13,10 +21,26 @@ pub enum Menu {
     Recovery,
     RefreshCoins(Vec<OutPoint>),
     PsbtPreSelected(Txid),
-    #[cfg(feature = "buysell")]
-    BuySell, //(Option<AccountInfo>),
-    #[cfg(feature = "breez")]
-    Activate(ActivateMenu),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActiveSubMenu {
+    Send,
+    Receive,
+    Transactions(Option<Txid>),
+    Settings(Option<SettingsOption>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VaultSubMenu {
+    Home,
+    Send,
+    Receive,
+    Coins(Option<Vec<OutPoint>>),
+    Transactions(Option<Txid>),
+    PSBTs(Option<Txid>),
+    Recovery,
+    Settings(Option<SettingsOption>),
 }
 
 /// Pre-selectable settings options.
@@ -24,14 +48,3 @@ pub enum Menu {
 pub enum SettingsOption {
     Node,
 }
-
-/// Activate sub-menu options for Lightning/Liquid payments.
-#[cfg(feature = "breez")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ActivateMenu {
-    Main,
-    Send,
-    Receive,
-    History,
-}
-

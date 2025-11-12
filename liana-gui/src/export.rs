@@ -1207,6 +1207,32 @@ pub async fn from_backup(sender: &UnboundedSender<Progress>, path: PathBuf) -> R
 ///    - parse psbt from backup
 ///    - import PSBTs
 ///    - import labels
+#[cfg(feature = "breez")]
+pub async fn import_backup_at_launch(
+    cache: Cache,
+    wallet: Arc<Wallet>,
+    config: Config,
+    daemon: Arc<dyn Daemon + Sync + Send>,
+    datadir: LianaDirectory,
+    internal_bitcoind: Option<Bitcoind>,
+    backup: Backup,
+    breez_manager: Option<crate::app::breez::wallet::BreezWalletManager>,
+) -> Result<
+    (
+        Cache,
+        Arc<Wallet>,
+        Config,
+        Arc<dyn Daemon + Sync + Send>,
+        LianaDirectory,
+        Option<Bitcoind>,
+        Option<crate::app::breez::wallet::BreezWalletManager>,
+    ),
+    RestoreBackupError,
+> {
+    import_backup_at_launch_impl(cache, wallet, config, daemon, datadir, internal_bitcoind, backup, Some(breez_manager)).await.map(|(c, w, cfg, d, dir, b, bm)| (c, w, cfg, d, dir, b, bm.unwrap()))
+}
+
+#[cfg(not(feature = "breez"))]
 pub async fn import_backup_at_launch(
     cache: Cache,
     wallet: Arc<Wallet>,
@@ -1223,6 +1249,30 @@ pub async fn import_backup_at_launch(
         Arc<dyn Daemon + Sync + Send>,
         LianaDirectory,
         Option<Bitcoind>,
+    ),
+    RestoreBackupError,
+> {
+    import_backup_at_launch_impl(cache, wallet, config, daemon, datadir, internal_bitcoind, backup, None).await.map(|(c, w, cfg, d, dir, b, _)| (c, w, cfg, d, dir, b))
+}
+
+async fn import_backup_at_launch_impl(
+    cache: Cache,
+    wallet: Arc<Wallet>,
+    config: Config,
+    daemon: Arc<dyn Daemon + Sync + Send>,
+    datadir: LianaDirectory,
+    internal_bitcoind: Option<Bitcoind>,
+    backup: Backup,
+    breez_manager: Option<Option<crate::app::breez::wallet::BreezWalletManager>>,
+) -> Result<
+    (
+        Cache,
+        Arc<Wallet>,
+        Config,
+        Arc<dyn Daemon + Sync + Send>,
+        LianaDirectory,
+        Option<Bitcoind>,
+        Option<Option<crate::app::breez::wallet::BreezWalletManager>>,
     ),
     RestoreBackupError,
 > {
@@ -1306,7 +1356,7 @@ pub async fn import_backup_at_launch(
         }
     }
 
-    Ok((cache, wallet, config, daemon, datadir, internal_bitcoind))
+    Ok((cache, wallet, config, daemon, datadir, internal_bitcoind, breez_manager))
 }
 
 pub async fn export_labels(

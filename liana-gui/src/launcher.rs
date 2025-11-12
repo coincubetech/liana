@@ -252,10 +252,18 @@ impl Launcher {
             }
             Message::CubeCreated(res) => match res {
                 Ok(_cube) => {
+                    // Clear the form
                     self.create_cube_name = liana_ui::component::form::Value::default();
                     self.create_cube_pin = [String::new(), String::new(), String::new(), String::new()];
                     self.create_cube_pin_confirm = [String::new(), String::new(), String::new(), String::new()];
                     self.pin_enabled = false;
+                    
+                    // NOTE: Lightning wallet auto-creation is NOT done here because:
+                    // 1. A Cube doesn't have a Vault wallet yet when first created
+                    // 2. Lightning wallet should be tied to the actual Vault wallet's descriptor_checksum
+                    // 3. Auto-creation happens in loader.rs when the vault wallet is loaded
+                    // 4. If user accesses Active panel without a lightning wallet, they'll see the create/import UI
+                    
                     self.reload()
                 }
                 Err(e) => {
