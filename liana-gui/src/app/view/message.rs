@@ -263,7 +263,7 @@ pub enum ActiveMessage {
     ShowReceivePanel,
     ShowHistoryPanel,
     ShowSettingsPanel,
-    
+
     // Lightning wallet setup
     CreateLightningWallet,
     ConfirmBackup,
@@ -272,7 +272,7 @@ pub enum ActiveMessage {
     ConfirmImport,
     CancelImport,
     LightningWalletCreated(Result<String, String>),
-    
+
     // Send messages
     DestinationEdited(String),
     AmountEdited(String),
@@ -295,14 +295,14 @@ pub enum ActiveMessage {
     PrepareReceive,
     GenerateInvoice,
     NewInvoice,
-    
+
     // Payment history messages
     LoadPaymentHistory,
     PaymentHistoryLoaded(Vec<crate::app::breez::PaymentInfo>),
     PaymentHistoryLoadFailed(String),
     FilterChanged(String),
     RefreshHistory,
-    
+
     // Confirmation messages
     ShowConfirmation,
     ConfirmPayment,
@@ -317,6 +317,3 @@ pub enum ActiveMessage {
     // Error handling
     Error(String),
 }
-
-
-

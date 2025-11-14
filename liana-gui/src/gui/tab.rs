@@ -123,7 +123,8 @@ impl Tab {
                             );
                         }
                     }
-                    let (install, command) = Installer::new(datadir, network, None, init, false, None);
+                    let (install, command) =
+                        Installer::new(datadir, network, None, init, false, None);
                     self.state = State::Installer(Box::new(install));
                     command.map(|msg| Message::Install(Box::new(msg)))
                 }
@@ -136,7 +137,9 @@ impl Tab {
                             let network_dir = datadir_path.network_directory(network);
                             match app::settings::Settings::from_file(&network_dir) {
                                 Ok(s) => {
-                                    if let Some(wallet_settings) = s.wallets.iter().find(|w| w.wallet_id() == *vault_id) {
+                                    if let Some(wallet_settings) =
+                                        s.wallets.iter().find(|w| w.wallet_id() == *vault_id)
+                                    {
                                         if wallet_settings.remote_backend_auth.is_some() {
                                             // Will go to Login after PIN verification
                                             crate::pin_entry::PinEntrySuccess::LoadLoader {
@@ -184,7 +187,7 @@ impl Tab {
                                 network,
                             }
                         };
-                        
+
                         let pin_entry = crate::pin_entry::PinEntry::new(cube, on_success);
                         self.state = State::PinEntry(Box::new(pin_entry));
                         Task::none()
@@ -196,15 +199,28 @@ impl Tab {
                             let network_dir = datadir_path.network_directory(network);
                             match app::settings::Settings::from_file(&network_dir) {
                                 Ok(s) => {
-                                    if let Some(wallet_settings) = s.wallets.iter().find(|w| w.wallet_id() == *vault_id) {
+                                    if let Some(wallet_settings) =
+                                        s.wallets.iter().find(|w| w.wallet_id() == *vault_id)
+                                    {
                                         if wallet_settings.remote_backend_auth.is_some() {
-                                            let (login, command) =
-                                                login::LianaLiteLogin::new(datadir_path, network, wallet_settings.clone());
+                                            let (login, command) = login::LianaLiteLogin::new(
+                                                datadir_path,
+                                                network,
+                                                wallet_settings.clone(),
+                                            );
                                             self.state = State::Login(Box::new(login));
-                                            return command.map(|msg| Message::Login(Box::new(msg)));
+                                            return command
+                                                .map(|msg| Message::Login(Box::new(msg)));
                                         } else {
-                                            let (loader, command) =
-                                                Loader::new(datadir_path, cfg, network, None, None, Some(wallet_settings.clone()), cube);
+                                            let (loader, command) = Loader::new(
+                                                datadir_path,
+                                                cfg,
+                                                network,
+                                                None,
+                                                None,
+                                                Some(wallet_settings.clone()),
+                                                cube,
+                                            );
                                             self.state = State::Loader(Box::new(loader));
                                             return command.map(|msg| Message::Load(Box::new(msg)));
                                         }
@@ -215,14 +231,10 @@ impl Tab {
                                 }
                             }
                         }
-                        
+
                         // No vault configured - load app without wallet
-                        let (app, command) = App::new_without_wallet(
-                            cfg,
-                            datadir_path,
-                            network,
-                            cube,
-                        );
+                        let (app, command) =
+                            App::new_without_wallet(cfg, datadir_path, network, cube);
                         self.state = State::App(app);
                         command.map(|msg| Message::Run(Box::new(msg)))
                     }
@@ -297,25 +309,39 @@ impl Tab {
                                     existing_cube.clone()
                                 }
                                 // Second, find a cube without a vault and associate this wallet with it
-                                else if let Some(empty_cube) = cubes.cubes.iter_mut().find(|c| c.vault_wallet_id.is_none()) {
+                                else if let Some(empty_cube) =
+                                    cubes.cubes.iter_mut().find(|c| c.vault_wallet_id.is_none())
+                                {
                                     empty_cube.vault_wallet_id = Some(settings.wallet_id());
                                     let cube_clone = empty_cube.clone();
                                     // Save the updated cubes
                                     tokio::runtime::Handle::current().block_on(async {
-                                        let _ = app::settings::update_cubes_file(&network_dir, |_| cubes.clone()).await;
+                                        let _ =
+                                            app::settings::update_cubes_file(&network_dir, |_| {
+                                                cubes.clone()
+                                            })
+                                            .await;
                                     });
                                     cube_clone
                                 }
                                 // Third, create a new cube for this wallet
                                 else {
                                     let cube = app::settings::CubeSettings::new(
-                                        settings.alias.clone().unwrap_or_else(|| format!("My {} Cube", i.network)),
-                                        i.network
-                                    ).with_vault(settings.wallet_id());
+                                        settings
+                                            .alias
+                                            .clone()
+                                            .unwrap_or_else(|| format!("My {} Cube", i.network)),
+                                        i.network,
+                                    )
+                                    .with_vault(settings.wallet_id());
                                     cubes.cubes.push(cube.clone());
                                     // Save the cube
                                     tokio::runtime::Handle::current().block_on(async {
-                                        let _ = app::settings::update_cubes_file(&network_dir, |_| cubes.clone()).await;
+                                        let _ =
+                                            app::settings::update_cubes_file(&network_dir, |_| {
+                                                cubes.clone()
+                                            })
+                                            .await;
                                     });
                                     cube
                                 }
@@ -323,14 +349,20 @@ impl Tab {
                             Err(_) => {
                                 // No cubes file yet, create first cube
                                 let cube = app::settings::CubeSettings::new(
-                                    settings.alias.clone().unwrap_or_else(|| format!("My {} Cube", i.network)),
-                                    i.network
-                                ).with_vault(settings.wallet_id());
+                                    settings
+                                        .alias
+                                        .clone()
+                                        .unwrap_or_else(|| format!("My {} Cube", i.network)),
+                                    i.network,
+                                )
+                                .with_vault(settings.wallet_id());
                                 tokio::runtime::Handle::current().block_on(async {
-                                    let _ = app::settings::update_cubes_file(&network_dir, |mut c| {
-                                        c.cubes.push(cube.clone());
-                                        c
-                                    }).await;
+                                    let _ =
+                                        app::settings::update_cubes_file(&network_dir, |mut c| {
+                                            c.cubes.push(cube.clone());
+                                            c
+                                        })
+                                        .await;
                                 });
                                 cube
                             }
@@ -362,7 +394,7 @@ impl Tab {
                                 .join(app::config::DEFAULT_FILE_NAME),
                         )
                         .expect("A gui configuration file must be present");
-                        
+
                         let (app, command) = app::App::new_without_wallet(
                             cfg,
                             i.datadir.clone(),
@@ -373,7 +405,8 @@ impl Tab {
                         command.map(|msg| Message::Run(Box::new(msg)))
                     } else {
                         // No cube settings stored, go to launcher
-                        let (launcher, command) = Launcher::new(i.destination_path(), Some(network));
+                        let (launcher, command) =
+                            Launcher::new(i.destination_path(), Some(network));
                         self.state = State::Launcher(Box::new(launcher));
                         command.map(|msg| Message::Launch(Box::new(msg)))
                     }
@@ -381,101 +414,117 @@ impl Tab {
                     i.update(*msg).map(|msg| Message::Install(Box::new(msg)))
                 }
             }
-            (State::Loader(loader), Message::Load(msg)) => match *msg {
-                loader::Message::View(loader::ViewMessage::SwitchNetwork) => {
-                    let (launcher, command) =
-                        Launcher::new(loader.datadir_path.clone(), Some(loader.network));
-                    self.state = State::Launcher(Box::new(launcher));
-                    command.map(|msg| Message::Launch(Box::new(msg)))
-                }
-                loader::Message::View(loader::ViewMessage::SetupVault) => {
-                    let (install, command) = Installer::new(
-                        loader.datadir_path.clone(),
-                        loader.network,
-                        None,
-                        UserFlow::CreateWallet,
-                        false,
-                        None,
-                    );
-                    self.state = State::Installer(Box::new(install));
-                    command.map(|msg| Message::Install(Box::new(msg)))
-                }
-                loader::Message::Synced(Ok((wallet, cache, daemon, bitcoind, backup, breez_manager))) => {
-                    tracing::info!("📥 Loader::Message::Synced received for cube, breez_manager present: {}", breez_manager.is_some());
-                    if let Some(backup) = backup {
-                        let config = loader.gui_config.clone();
-                        let datadir = loader.datadir_path.clone();
-                        Task::perform(
-                            async move {
-                                import_backup_at_launch(
-                                    cache, wallet, config, daemon, datadir, bitcoind, backup, breez_manager,
-                                )
-                                .await
-                            },
-                            |r| {
-                                let r = r.map_err(loader::Error::RestoreBackup);
-                                Message::Load(Box::new(loader::Message::App(
-                                    r, /* restored_from_backup */ true,
-                                )))
-                            },
-                        )
-                    } else {
+            (State::Loader(loader), Message::Load(msg)) => {
+                match *msg {
+                    loader::Message::View(loader::ViewMessage::SwitchNetwork) => {
+                        let (launcher, command) =
+                            Launcher::new(loader.datadir_path.clone(), Some(loader.network));
+                        self.state = State::Launcher(Box::new(launcher));
+                        command.map(|msg| Message::Launch(Box::new(msg)))
+                    }
+                    loader::Message::View(loader::ViewMessage::SetupVault) => {
+                        let (install, command) = Installer::new(
+                            loader.datadir_path.clone(),
+                            loader.network,
+                            None,
+                            UserFlow::CreateWallet,
+                            false,
+                            None,
+                        );
+                        self.state = State::Installer(Box::new(install));
+                        command.map(|msg| Message::Install(Box::new(msg)))
+                    }
+                    loader::Message::Synced(Ok((
+                        wallet,
+                        cache,
+                        daemon,
+                        bitcoind,
+                        backup,
+                        breez_manager,
+                    ))) => {
+                        tracing::info!("📥 Loader::Message::Synced received for cube, breez_manager present: {}", breez_manager.is_some());
+                        if let Some(backup) = backup {
+                            let config = loader.gui_config.clone();
+                            let datadir = loader.datadir_path.clone();
+                            Task::perform(
+                                async move {
+                                    import_backup_at_launch(
+                                        cache,
+                                        wallet,
+                                        config,
+                                        daemon,
+                                        datadir,
+                                        bitcoind,
+                                        backup,
+                                        breez_manager,
+                                    )
+                                    .await
+                                },
+                                |r| {
+                                    let r = r.map_err(loader::Error::RestoreBackup);
+                                    Message::Load(Box::new(loader::Message::App(
+                                        r, /* restored_from_backup */ true,
+                                    )))
+                                },
+                            )
+                        } else {
+                            let (app, command) = App::new_with_breez(
+                                cache,
+                                wallet,
+                                loader.gui_config.clone(),
+                                daemon,
+                                loader.datadir_path.clone(),
+                                bitcoind,
+                                false,
+                                breez_manager,
+                            );
+                            self.state = State::App(app);
+                            command.map(|msg| Message::Run(Box::new(msg)))
+                        }
+                    }
+                    #[cfg(feature = "breez")]
+                    loader::Message::App(
+                        Ok((cache, wallet, config, daemon, datadir, bitcoind, breez_manager)),
+                        restored_from_backup,
+                    ) => {
                         let (app, command) = App::new_with_breez(
                             cache,
                             wallet,
-                            loader.gui_config.clone(),
+                            config,
                             daemon,
-                            loader.datadir_path.clone(),
+                            datadir,
                             bitcoind,
-                            false,
+                            restored_from_backup,
                             breez_manager,
                         );
                         self.state = State::App(app);
                         command.map(|msg| Message::Run(Box::new(msg)))
                     }
-                }
-                #[cfg(feature = "breez")]
-                loader::Message::App(
-                    Ok((cache, wallet, config, daemon, datadir, bitcoind, breez_manager)),
-                    restored_from_backup,
-                ) => {
-                    let (app, command) = App::new_with_breez(
-                        cache,
-                        wallet,
-                        config,
-                        daemon,
-                        datadir,
-                        bitcoind,
+                    #[cfg(not(feature = "breez"))]
+                    loader::Message::App(
+                        Ok((cache, wallet, config, daemon, datadir, bitcoind)),
                         restored_from_backup,
-                        breez_manager,
-                    );
-                    self.state = State::App(app);
-                    command.map(|msg| Message::Run(Box::new(msg)))
-                }
-                #[cfg(not(feature = "breez"))]
-                loader::Message::App(
-                    Ok((cache, wallet, config, daemon, datadir, bitcoind)),
-                    restored_from_backup,
-                ) => {
-                    let (app, command) = App::new(
-                        cache,
-                        wallet,
-                        config,
-                        daemon,
-                        datadir,
-                        bitcoind,
-                        restored_from_backup,
-                    );
-                    self.state = State::App(app);
-                    command.map(|msg| Message::Run(Box::new(msg)))
-                }
-                loader::Message::App(Err(e), _) => {
-                    tracing::error!("Failed to import backup: {e}");
-                    Task::none()
-                }
+                    ) => {
+                        let (app, command) = App::new(
+                            cache,
+                            wallet,
+                            config,
+                            daemon,
+                            datadir,
+                            bitcoind,
+                            restored_from_backup,
+                        );
+                        self.state = State::App(app);
+                        command.map(|msg| Message::Run(Box::new(msg)))
+                    }
+                    loader::Message::App(Err(e), _) => {
+                        tracing::error!("Failed to import backup: {e}");
+                        Task::none()
+                    }
 
-                _ => loader.update(*msg).map(|msg| Message::Load(Box::new(msg))),
-            },
+                    _ => loader.update(*msg).map(|msg| Message::Load(Box::new(msg))),
+                }
+            }
             (State::App(app), Message::Run(msg)) => {
                 let app_msg = *msg;
                 match app_msg {
@@ -486,8 +535,8 @@ impl Tab {
                             app.cache().network,
                             None,
                             UserFlow::CreateWallet,
-                            true,  // launched from app
-                            Some(app.cube_settings().clone()),  // pass cube settings for returning
+                            true,                              // launched from app
+                            Some(app.cube_settings().clone()), // pass cube settings for returning
                         );
                         self.state = State::Installer(Box::new(install));
                         command.map(|msg| Message::Install(Box::new(msg)))
@@ -499,7 +548,11 @@ impl Tab {
                 crate::pin_entry::Message::PinVerified => {
                     // PIN successfully verified, proceed to next state based on on_success
                     match &pin_entry.on_success {
-                        crate::pin_entry::PinEntrySuccess::LoadApp { datadir, config, network } => {
+                        crate::pin_entry::PinEntrySuccess::LoadApp {
+                            datadir,
+                            config,
+                            network,
+                        } => {
                             let cube = pin_entry.cube().clone();
                             let (app, command) = App::new_without_wallet(
                                 config.clone(),
@@ -510,13 +563,13 @@ impl Tab {
                             self.state = State::App(app);
                             command.map(|msg| Message::Run(Box::new(msg)))
                         }
-                        crate::pin_entry::PinEntrySuccess::LoadLoader { 
-                            datadir, 
-                            config, 
-                            network, 
-                            internal_bitcoind, 
-                            backup, 
-                            wallet_settings 
+                        crate::pin_entry::PinEntrySuccess::LoadLoader {
+                            datadir,
+                            config,
+                            network,
+                            internal_bitcoind,
+                            backup,
+                            wallet_settings,
                         } => {
                             let cube = pin_entry.cube().clone();
                             if let Some(wallet_settings) = wallet_settings {
@@ -562,15 +615,21 @@ impl Tab {
                     let network = pin_entry.cube().network;
                     let (launcher, command) = Launcher::new(
                         match &pin_entry.on_success {
-                            crate::pin_entry::PinEntrySuccess::LoadApp { datadir, .. } => datadir.clone(),
-                            crate::pin_entry::PinEntrySuccess::LoadLoader { datadir, .. } => datadir.clone(),
+                            crate::pin_entry::PinEntrySuccess::LoadApp { datadir, .. } => {
+                                datadir.clone()
+                            }
+                            crate::pin_entry::PinEntrySuccess::LoadLoader { datadir, .. } => {
+                                datadir.clone()
+                            }
                         },
                         Some(network),
                     );
                     self.state = State::Launcher(Box::new(launcher));
                     command.map(|msg| Message::Launch(Box::new(msg)))
                 }
-                _ => pin_entry.update(*msg).map(|msg| Message::PinEntry(Box::new(msg))),
+                _ => pin_entry
+                    .update(*msg)
+                    .map(|msg| Message::PinEntry(Box::new(msg))),
             },
             _ => Task::none(),
         }

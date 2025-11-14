@@ -100,4 +100,3 @@ impl From<FiatMessage> for Message {
         Message::Fiat(value)
     }
 }
-

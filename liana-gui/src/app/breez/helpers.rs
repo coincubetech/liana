@@ -27,23 +27,19 @@ pub async fn get_or_create_breez_connection(
 ) -> Result<Option<BreezWalletManager>, BreezError> {
     // Check if Lightning wallet exists for this cube
     if !storage::lightning_wallet_exists(network_dir, wallet_checksum) {
-        tracing::debug!(
-            "No Lightning wallet found for cube: {}",
-            wallet_checksum
-        );
+        tracing::debug!("No Lightning wallet found for cube: {}", wallet_checksum);
         return Ok(None);
     }
 
     // Load Lightning mnemonic
-    let mnemonic = storage::load_lightning_mnemonic(network_dir, wallet_checksum)
-        .map_err(|e| {
-            tracing::error!(
-                "Failed to load Lightning mnemonic for cube {}: {:?}",
-                wallet_checksum,
-                e
-            );
+    let mnemonic = storage::load_lightning_mnemonic(network_dir, wallet_checksum).map_err(|e| {
+        tracing::error!(
+            "Failed to load Lightning mnemonic for cube {}: {:?}",
+            wallet_checksum,
             e
-        })?;
+        );
+        e
+    })?;
 
     // Get or create connection through manager
     match manager.get_or_create(wallet_checksum, &mnemonic).await {
@@ -96,10 +92,7 @@ pub fn auto_create_lightning_wallet(
     // Store the mnemonic
     storage::store_lightning_mnemonic(network_dir, wallet_checksum, &mnemonic)?;
 
-    tracing::info!(
-        "✅ Auto-created Lightning wallet for cube: {}",
-        wallet_name
-    );
+    tracing::info!("✅ Auto-created Lightning wallet for cube: {}", wallet_name);
     tracing::info!(
         "📁 Lightning wallet stored at: {}/lightning/",
         wallet_checksum
@@ -123,7 +116,9 @@ pub async fn initialize_breez_direct(
     network: bitcoin::Network,
     data_dir: &Path,
 ) -> Result<BreezWalletManager, BreezError> {
-    tracing::warn!("⚠️ Using direct Breez initialization (legacy). Consider using BreezConnectionManager.");
+    tracing::warn!(
+        "⚠️ Using direct Breez initialization (legacy). Consider using BreezConnectionManager."
+    );
     BreezWalletManager::initialize(mnemonic, network, data_dir).await
 }
 
@@ -136,12 +131,8 @@ mod tests {
     fn test_auto_create_checks_existence() {
         // This is a unit test to verify the logic, not a full integration test
         let temp_dir = PathBuf::from("/tmp/test_breez_helper");
-        let result = auto_create_lightning_wallet(
-            &temp_dir,
-            "test_checksum",
-            "Test Cube",
-        );
-        
+        let result = auto_create_lightning_wallet(&temp_dir, "test_checksum", "Test Cube");
+
         // Should either create or already exist
         assert!(result.is_ok() || result.is_err());
     }

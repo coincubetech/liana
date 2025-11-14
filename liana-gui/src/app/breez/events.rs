@@ -38,7 +38,10 @@ impl BreezEventHandler {
                 amount_sat: details.amount_sat,
             },
             SdkEvent::PaymentFailed { details } => BreezEvent::PaymentFailed {
-                payment_id: details.destination.clone().unwrap_or_else(|| "unknown".to_string()),
+                payment_id: details
+                    .destination
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string()),
                 error: format!("Payment failed: {:?}", details),
             },
             SdkEvent::PaymentPending { details } => BreezEvent::PaymentPending {
@@ -46,7 +49,7 @@ impl BreezEventHandler {
             },
             SdkEvent::Synced => BreezEvent::SyncComplete,
             // Handle other variants we don't specifically process
-            SdkEvent::PaymentRefundable { .. } 
+            SdkEvent::PaymentRefundable { .. }
             | SdkEvent::PaymentRefunded { .. }
             | SdkEvent::PaymentRefundPending { .. }
             | SdkEvent::PaymentWaitingConfirmation { .. }
@@ -80,7 +83,8 @@ pub async fn setup_event_listener(
 }
 
 #[cfg(not(feature = "breez"))]
-pub async fn setup_event_listener(_sdk: ()) -> Result<mpsc::UnboundedReceiver<BreezEvent>, BreezError> {
+pub async fn setup_event_listener(
+    _sdk: (),
+) -> Result<mpsc::UnboundedReceiver<BreezEvent>, BreezError> {
     Err(BreezError::NotInitialized)
 }
-

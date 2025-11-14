@@ -34,7 +34,9 @@ impl BreezConfig {
             .filter(|k| !k.is_empty());
 
         if api_key.is_none() {
-            log::error!("❌ BREEZ_API_KEY not set! Breez SDK Liquid requires an API key to initialize.");
+            log::error!(
+                "❌ BREEZ_API_KEY not set! Breez SDK Liquid requires an API key to initialize."
+            );
             log::error!("Please:");
             log::error!("1. Get a FREE API key from: https://breez.technology/request-api-key/");
             log::error!("2. Add it to your .env file: BREEZ_API_KEY=your_key_here");
@@ -69,4 +71,3 @@ impl BreezConfig {
         &self.config
     }
 }
-

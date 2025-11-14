@@ -6,8 +6,8 @@ use super::BreezError;
 
 #[cfg(feature = "breez")]
 use breez_sdk_liquid::prelude::{
-    GetInfoResponse, LiquidSdk, PrepareReceiveRequest, PrepareReceiveResponse,
-    ReceivePaymentRequest, ReceivePaymentResponse, ReceiveAmount, Limits, PaymentMethod,
+    GetInfoResponse, Limits, LiquidSdk, PaymentMethod, PrepareReceiveRequest,
+    PrepareReceiveResponse, ReceiveAmount, ReceivePaymentRequest, ReceivePaymentResponse,
 };
 
 /// Balance information
@@ -168,4 +168,3 @@ impl BreezReceiveManager {
         Err(BreezError::NotInitialized)
     }
 }
-

@@ -169,7 +169,7 @@ impl Loader {
             // No vault configured - loader will show setup screen
             Task::none()
         };
-        
+
         (
             Loader {
                 network,
@@ -207,9 +207,11 @@ impl Loader {
         info: GetInfoResult,
     ) -> Task<Message> {
         // If no wallet is configured, this shouldn't be called
-        let wallet_settings = self.wallet_settings.clone()
+        let wallet_settings = self
+            .wallet_settings
+            .clone()
             .expect("wallet_settings must be Some when loading");
-        
+
         // If the node is not Bitcoin Core or otherwise the wallet was previously synced (blockheight > 0),
         // load the application directly.
         if daemon.backend().node_type() != Some(NodeType::Bitcoind) || info.block_height > 0 {
@@ -253,7 +255,9 @@ impl Loader {
                 Error::Daemon(DaemonError::ClientNotSupported)
                 | Error::Daemon(DaemonError::RpcSocket(Some(ErrorKind::ConnectionRefused), _))
                 | Error::Daemon(DaemonError::RpcSocket(Some(ErrorKind::NotFound), _)) => {
-                    let wallet_settings = self.wallet_settings.clone()
+                    let wallet_settings = self
+                        .wallet_settings
+                        .clone()
                         .expect("wallet_settings must be Some when starting daemon");
                     self.step = Step::StartingDaemon;
                     self.daemon_started = true;
@@ -311,7 +315,9 @@ impl Loader {
                 match res {
                     Ok(info) => {
                         if (info.sync - 1.0_f64).abs() < f64::EPSILON {
-                            let wallet_settings = self.wallet_settings.clone()
+                            let wallet_settings = self
+                                .wallet_settings
+                                .clone()
                                 .expect("wallet_settings must be Some when syncing");
                             return Task::perform(
                                 load_application(
@@ -491,20 +497,22 @@ pub async fn load_application(
         .load_from_settings(wallet_settings)?
         .load_hotsigners(&datadir_path, network)?;
     tracing::info!("📦 Wallet loaded: {}", wallet.name);
-    
+
     // Auto-create and initialize Lightning wallet when vault loads
     #[cfg(feature = "breez")]
     let breez_manager = {
-        use crate::app::breez::{storage, auto_create_lightning_wallet, BreezConnectionManager};
-        
+        use crate::app::breez::{auto_create_lightning_wallet, storage, BreezConnectionManager};
+
         let network_dir = datadir_path.network_directory(network);
         let wallet_checksum = &wallet.descriptor_checksum;
-        
+
         // Auto-create if doesn't exist
-        if let Err(e) = auto_create_lightning_wallet(network_dir.path(), wallet_checksum, &wallet.name) {
+        if let Err(e) =
+            auto_create_lightning_wallet(network_dir.path(), wallet_checksum, &wallet.name)
+        {
             tracing::error!("❌ Failed to auto-create Lightning wallet: {:?}", e);
         }
-        
+
         // Check if Lightning wallet exists
         if !storage::lightning_wallet_exists(network_dir.path(), wallet_checksum) {
             tracing::warn!("⚠️ No Lightning wallet for Cube: {}", wallet.name);
@@ -513,15 +521,17 @@ pub async fn load_application(
             // Load mnemonic
             match storage::load_lightning_mnemonic(network_dir.path(), wallet_checksum) {
                 Ok(mnemonic) => {
-                    tracing::info!("🔌 Initializing Breez SDK for Cube: {} (checksum: {})", wallet.name, wallet_checksum);
-                    
+                    tracing::info!(
+                        "🔌 Initializing Breez SDK for Cube: {} (checksum: {})",
+                        wallet.name,
+                        wallet_checksum
+                    );
+
                     // Create a temporary connection manager for this initialization
                     // (In future, this should use a shared manager passed from App)
-                    let temp_manager = BreezConnectionManager::new(
-                        network,
-                        network_dir.path().to_path_buf(),
-                    );
-                    
+                    let temp_manager =
+                        BreezConnectionManager::new(network, network_dir.path().to_path_buf());
+
                     // Use connection manager to get or create connection
                     match temp_manager.get_or_create(wallet_checksum, &mnemonic).await {
                         Ok(breez_arc) => {
@@ -530,20 +540,30 @@ pub async fn load_application(
                             Some(breez_arc.as_ref().clone())
                         }
                         Err(e) => {
-                            tracing::error!("❌ Failed to initialize Breez SDK for Cube {}: {:?}", wallet.name, e);
-                            tracing::error!("   This might be a network issue, API key problem, or SDK error");
+                            tracing::error!(
+                                "❌ Failed to initialize Breez SDK for Cube {}: {:?}",
+                                wallet.name,
+                                e
+                            );
+                            tracing::error!(
+                                "   This might be a network issue, API key problem, or SDK error"
+                            );
                             None
                         }
                     }
                 }
                 Err(e) => {
-                    tracing::error!("❌ Failed to load Lightning mnemonic for Cube {}: {:?}", wallet.name, e);
+                    tracing::error!(
+                        "❌ Failed to load Lightning mnemonic for Cube {}: {:?}",
+                        wallet.name,
+                        e
+                    );
                     None
                 }
             }
         }
     };
-    
+
     #[cfg(not(feature = "breez"))]
     let breez_manager: Option<()> = None;
 
@@ -567,8 +587,18 @@ pub async fn load_application(
         has_vault: true,
     };
 
-    tracing::info!("📤 load_application returning breez_manager present: {}", breez_manager.is_some());
-    Ok((Arc::new(wallet), cache, daemon, internal_bitcoind, backup, breez_manager))
+    tracing::info!(
+        "📤 load_application returning breez_manager present: {}",
+        breez_manager.is_some()
+    );
+    Ok((
+        Arc::new(wallet),
+        cache,
+        daemon,
+        internal_bitcoind,
+        backup,
+        breez_manager,
+    ))
 }
 
 #[cfg(not(feature = "breez"))]

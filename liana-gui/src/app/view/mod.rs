@@ -230,15 +230,15 @@ pub fn sidebar<'a>(menu: &Menu, cache: &'a Cache, has_vault: bool) -> Container<
                 .push(Space::with_width(Length::Fill))
                 .push(
                     Container::new(plus_icon().style(theme::text::secondary))
-                        .padding(iced::Padding::from([3.0, 0.0]))  // Add 3px top padding for better centering
-                        .align_y(iced::alignment::Vertical::Top)
+                        .padding(iced::Padding::from([3.0, 0.0])) // Add 3px top padding for better centering
+                        .align_y(iced::alignment::Vertical::Top),
                 )
                 .padding(10),
         )
         .width(iced::Length::Fill)
         .style(theme::button::menu)
         .on_press(Message::SetupVault);
-        
+
         menu_column = menu_column.push(vault_plus_button);
     } else {
         // Has vault - show expandable Vault menu
@@ -772,7 +772,9 @@ pub fn dashboard<'a, T: Into<Element<'a, Message>>>(
                 if size.width > 150.0 {
                     sidebar(menu, cache, has_vault).height(Length::Fill).into()
                 } else {
-                    small_sidebar(menu, cache, has_vault).height(Length::Fill).into()
+                    small_sidebar(menu, cache, has_vault)
+                        .height(Length::Fill)
+                        .into()
                 }
             }))
             .width(Length::FillPortion(20)),

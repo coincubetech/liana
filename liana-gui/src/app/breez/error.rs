@@ -71,4 +71,3 @@ impl From<SdkError> for BreezError {
         Self::SdkError(err.to_string())
     }
 }
-

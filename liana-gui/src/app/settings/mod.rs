@@ -187,9 +187,8 @@ impl Cubes {
                 _ => SettingsError::ReadingFile(format!("Reading cubes file: {}", e)),
             })
             .and_then(|file_content| {
-                serde_json::from_slice::<Cubes>(&file_content).map_err(|e| {
-                    SettingsError::ReadingFile(format!("Parsing cubes file: {}", e))
-                })
+                serde_json::from_slice::<Cubes>(&file_content)
+                    .map_err(|e| SettingsError::ReadingFile(format!("Parsing cubes file: {}", e)))
             })
     }
 }

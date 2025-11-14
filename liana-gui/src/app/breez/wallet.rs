@@ -120,4 +120,3 @@ impl BreezWalletManager {
         Self { network }
     }
 }
-

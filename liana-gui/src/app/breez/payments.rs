@@ -6,7 +6,7 @@ use super::BreezError;
 
 #[cfg(feature = "breez")]
 use breez_sdk_liquid::prelude::{
-    LiquidSdk, Payment, ListPaymentsRequest, PaymentState, PaymentType,
+    LiquidSdk, ListPaymentsRequest, Payment, PaymentState, PaymentType,
 };
 
 /// Payment manager for listing and managing transaction history
@@ -113,9 +113,9 @@ impl BreezPaymentManager {
         // Note: The SDK might not have a direct get_payment_by_id method
         // We'll need to list all and filter, or use the appropriate SDK method
         let payments = self.list_payments().await?;
-        Ok(payments.into_iter().find(|p| {
-            p.tx_id.as_ref().map(|id| id == payment_id).unwrap_or(false)
-        }))
+        Ok(payments
+            .into_iter()
+            .find(|p| p.tx_id.as_ref().map(|id| id == payment_id).unwrap_or(false)))
     }
 
     #[cfg(not(feature = "breez"))]
@@ -195,7 +195,7 @@ impl PaymentInfo {
     /// Format timestamp as human-readable date
     pub fn formatted_date(&self) -> String {
         use chrono::{Local, TimeZone};
-        
+
         let dt = Local.timestamp_opt(self.timestamp, 0);
         match dt.single() {
             Some(datetime) => datetime.format("%Y-%m-%d %H:%M:%S").to_string(),

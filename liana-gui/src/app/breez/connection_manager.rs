@@ -89,17 +89,17 @@ impl BreezConnectionManager {
                             "♻️ Reusing existing Breez SDK connection for cube: {}",
                             wallet_checksum
                         );
-                        
+
                         // Clone the manager before dropping the lock
                         let manager_clone = entry.manager.clone();
-                        
+
                         // Drop read lock and update last used time
                         drop(connections);
                         let mut connections = self.connections.write().await;
                         if let Some(entry) = connections.get_mut(wallet_checksum) {
                             entry.last_used = std::time::SystemTime::now();
                         }
-                        
+
                         return Ok(manager_clone);
                     }
                     ConnectionState::Initializing => {
@@ -153,37 +153,33 @@ impl BreezConnectionManager {
         );
 
         // Initialize new connection
-        let breez_data_dir = self
-            .data_dir
-            .join(wallet_checksum)
-            .join("breez");
+        let breez_data_dir = self.data_dir.join(wallet_checksum).join("breez");
 
-        let manager = match BreezWalletManager::initialize(mnemonic, self.network, &breez_data_dir)
-            .await
-        {
-            Ok(manager) => {
-                tracing::info!(
-                    "✅ Breez SDK connection initialized successfully for cube: {}",
-                    wallet_checksum
-                );
-                manager
-            }
-            Err(e) => {
-                tracing::error!(
-                    "❌ Failed to initialize Breez SDK for cube {}: {:?}",
-                    wallet_checksum,
-                    e
-                );
-
-                // Mark as error
-                let mut connections = self.connections.write().await;
-                if let Some(entry) = connections.get_mut(wallet_checksum) {
-                    entry.state = ConnectionState::Error(e.to_string());
+        let manager =
+            match BreezWalletManager::initialize(mnemonic, self.network, &breez_data_dir).await {
+                Ok(manager) => {
+                    tracing::info!(
+                        "✅ Breez SDK connection initialized successfully for cube: {}",
+                        wallet_checksum
+                    );
+                    manager
                 }
+                Err(e) => {
+                    tracing::error!(
+                        "❌ Failed to initialize Breez SDK for cube {}: {:?}",
+                        wallet_checksum,
+                        e
+                    );
 
-                return Err(e);
-            }
-        };
+                    // Mark as error
+                    let mut connections = self.connections.write().await;
+                    if let Some(entry) = connections.get_mut(wallet_checksum) {
+                        entry.state = ConnectionState::Error(e.to_string());
+                    }
+
+                    return Err(e);
+                }
+            };
 
         let manager_arc = Arc::new(manager);
 
@@ -261,10 +257,7 @@ impl BreezConnectionManager {
         }
 
         if !errors.is_empty() {
-            let error_msg = format!(
-                "Failed to disconnect {} connections",
-                errors.len()
-            );
+            let error_msg = format!("Failed to disconnect {} connections", errors.len());
             tracing::error!("{}: {:?}", error_msg, errors);
             return Err(BreezError::SdkError(error_msg));
         }
@@ -361,31 +354,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_manager_creation() {
-        let manager = BreezConnectionManager::new(
-            bitcoin::Network::Testnet,
-            PathBuf::from("/tmp/test"),
-        );
+        let manager =
+            BreezConnectionManager::new(bitcoin::Network::Testnet, PathBuf::from("/tmp/test"));
         assert_eq!(manager.connection_count().await, 0);
     }
 
     #[tokio::test]
     async fn test_connection_state() {
-        let manager = BreezConnectionManager::new(
-            bitcoin::Network::Testnet,
-            PathBuf::from("/tmp/test"),
-        );
-        
+        let manager =
+            BreezConnectionManager::new(bitcoin::Network::Testnet, PathBuf::from("/tmp/test"));
+
         let state = manager.get_state("test_wallet").await;
         assert_eq!(state, ConnectionState::NotInitialized);
     }
 
     #[tokio::test]
     async fn test_is_connected() {
-        let manager = BreezConnectionManager::new(
-            bitcoin::Network::Testnet,
-            PathBuf::from("/tmp/test"),
-        );
-        
+        let manager =
+            BreezConnectionManager::new(bitcoin::Network::Testnet, PathBuf::from("/tmp/test"));
+
         assert!(!manager.is_connected("test_wallet").await);
     }
 }

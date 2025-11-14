@@ -29,12 +29,12 @@ pub use lianad::{commands::CoinStatus, config::Config as DaemonConfig};
 pub use config::Config;
 pub use message::Message;
 
-use state::{
-    CoinsPanel, CreateSpendPanel,
-    GlobalHome, Home, PsbtsPanel, ReceivePanel, State, TransactionsPanel,
-};
 #[cfg(feature = "breez")]
 use state::{ActiveReceive, ActiveSend, ActiveSettings, ActiveTransactions};
+use state::{
+    CoinsPanel, CreateSpendPanel, GlobalHome, Home, PsbtsPanel, ReceivePanel, State,
+    TransactionsPanel,
+};
 use wallet::{sync_status, SyncStatus};
 
 use crate::{
@@ -85,36 +85,54 @@ impl Panels {
         network: bitcoin::Network,
     ) {
         use crate::app::breez::storage;
-        
+
         let network_dir = data_dir.network_directory(network);
         let wallet_checksum = &wallet.descriptor_checksum;
-        
+
         // Check if Lightning wallet already exists
         if storage::lightning_wallet_exists(network_dir.path(), wallet_checksum) {
-            log::info!("⚡ Lightning wallet already exists for Cube: {}", wallet.name);
+            log::info!(
+                "⚡ Lightning wallet already exists for Cube: {}",
+                wallet.name
+            );
             return;
         }
-        
+
         // Generate new Lightning wallet mnemonic
         match storage::generate_lightning_mnemonic() {
             Ok(mnemonic) => {
                 // Store the mnemonic
-                match storage::store_lightning_mnemonic(network_dir.path(), wallet_checksum, &mnemonic) {
+                match storage::store_lightning_mnemonic(
+                    network_dir.path(),
+                    wallet_checksum,
+                    &mnemonic,
+                ) {
                     Ok(_) => {
                         log::info!("✅ Auto-created Lightning wallet for Cube: {}", wallet.name);
-                        log::info!("📁 Lightning wallet stored at: {}/lightning/", wallet_checksum);
+                        log::info!(
+                            "📁 Lightning wallet stored at: {}/lightning/",
+                            wallet_checksum
+                        );
                     }
                     Err(e) => {
-                        log::error!("❌ Failed to store Lightning wallet for Cube {}: {}", wallet.name, e);
+                        log::error!(
+                            "❌ Failed to store Lightning wallet for Cube {}: {}",
+                            wallet.name,
+                            e
+                        );
                     }
                 }
             }
             Err(e) => {
-                log::error!("❌ Failed to generate Lightning mnemonic for Cube {}: {}", wallet.name, e);
+                log::error!(
+                    "❌ Failed to generate Lightning mnemonic for Cube {}: {}",
+                    wallet.name,
+                    e
+                );
             }
         }
     }
-    
+
     fn new_without_wallet(
         _data_dir: LianaDirectory,
         _network: liana::miniscript::bitcoin::Network,
@@ -124,16 +142,31 @@ impl Panels {
     ) -> Panels {
         // NO PLACEHOLDER WALLET - All vault panels are None
         // The UI layer prevents navigation to vault panels when has_vault=false
-        
+
         Self {
             current: Menu::Home,
             vault_expanded: false,
             active_expanded: false,
             // Active panels support operation without a wallet
             global_home: GlobalHome::new_without_wallet(),
-            active_send: ActiveSend::new_without_wallet(_network, _data_dir.clone(), _cube_id.clone(), _breez_manager.clone()),
-            active_receive: ActiveReceive::new_without_wallet(_network, _data_dir.clone(), _cube_id.clone(), _breez_manager.clone()),
-            active_transactions: ActiveTransactions::new_without_wallet(_network, _data_dir.clone(), _cube_id.clone(), _breez_manager.clone()),
+            active_send: ActiveSend::new_without_wallet(
+                _network,
+                _data_dir.clone(),
+                _cube_id.clone(),
+                _breez_manager.clone(),
+            ),
+            active_receive: ActiveReceive::new_without_wallet(
+                _network,
+                _data_dir.clone(),
+                _cube_id.clone(),
+                _breez_manager.clone(),
+            ),
+            active_transactions: ActiveTransactions::new_without_wallet(
+                _network,
+                _data_dir.clone(),
+                _cube_id.clone(),
+                _breez_manager.clone(),
+            ),
             active_settings: ActiveSettings::new_without_wallet(),
             // All vault panels are None - no vault exists
             vault_home: None,
@@ -165,11 +198,11 @@ impl Panels {
                 .map(|nt| nt == NodeType::Bitcoind)
                 // We don't know the node type for external lianad so assume it's bitcoind.
                 .unwrap_or(true);
-        
+
         // Auto-create Lightning wallet for this Cube if it doesn't exist
         #[cfg(feature = "breez")]
         Self::auto_create_lightning_wallet(&wallet, &data_dir, cache.network);
-        
+
         Self {
             current: Menu::Vault(crate::app::menu::VaultSubMenu::Home),
             vault_expanded: false,
@@ -190,9 +223,16 @@ impl Panels {
             )),
             active_send: ActiveSend::new(wallet.clone(), cache.network, data_dir.clone()),
             active_receive: ActiveReceive::new(wallet.clone(), cache.network, data_dir.clone()),
-            active_transactions: ActiveTransactions::new(wallet.clone(), cache.network, data_dir.clone()),
+            active_transactions: ActiveTransactions::new(
+                wallet.clone(),
+                cache.network,
+                data_dir.clone(),
+            ),
             active_settings: ActiveSettings::new(wallet.clone()),
-            coins: Some(CoinsPanel::new(cache.coins(), wallet.main_descriptor.first_timelock_value())),
+            coins: Some(CoinsPanel::new(
+                cache.coins(),
+                wallet.main_descriptor.first_timelock_value(),
+            )),
             transactions: Some(TransactionsPanel::new(wallet.clone())),
             psbts: Some(PsbtsPanel::new(wallet.clone())),
             recovery: Some(new_recovery_panel(wallet.clone(), cache)),
@@ -211,10 +251,14 @@ impl Panels {
                 config.clone(),
             )),
             #[cfg(feature = "buysell")]
-            buy_sell: Some(crate::app::view::buysell::BuySellPanel::new(cache.network, wallet.clone(), data_dir.clone())),
+            buy_sell: Some(crate::app::view::buysell::BuySellPanel::new(
+                cache.network,
+                wallet.clone(),
+                data_dir.clone(),
+            )),
         }
     }
-    
+
     /// Create panels with initialized Breez SDK
     #[cfg(feature = "breez")]
     fn new_with_breez(
@@ -227,19 +271,24 @@ impl Panels {
         restored_from_backup: bool,
         breez_manager: Option<crate::app::breez::wallet::BreezWalletManager>,
     ) -> Panels {
-        tracing::info!("🔧 Creating panels WITH Breez SDK support for cube: {}", wallet.name);
+        tracing::info!(
+            "🔧 Creating panels WITH Breez SDK support for cube: {}",
+            wallet.name
+        );
         let show_rescan_warning = restored_from_backup
             && daemon_backend.is_lianad()
             && daemon_backend
                 .node_type()
                 .map(|nt| nt == NodeType::Bitcoind)
                 .unwrap_or(true);
-        
+
         // Create Active panels with initialized Breez SDK
         let mut active_send = ActiveSend::new(wallet.clone(), cache.network, data_dir.clone());
-        let mut active_receive = ActiveReceive::new(wallet.clone(), cache.network, data_dir.clone());
-        let mut active_transactions = ActiveTransactions::new(wallet.clone(), cache.network, data_dir.clone());
-        
+        let mut active_receive =
+            ActiveReceive::new(wallet.clone(), cache.network, data_dir.clone());
+        let mut active_transactions =
+            ActiveTransactions::new(wallet.clone(), cache.network, data_dir.clone());
+
         tracing::debug!("breez_manager is_some: {}", breez_manager.is_some());
         if let Some(ref manager) = breez_manager {
             active_send.breez_manager = Some(manager.clone());
@@ -247,9 +296,11 @@ impl Panels {
             active_transactions.breez_manager = Some(manager.clone());
             tracing::info!("✅ Breez SDK assigned to Active panels for existing cube with vault");
         } else {
-            tracing::warn!("⚠️ No Breez SDK provided to Active panels - Lightning features may not work!");
+            tracing::warn!(
+                "⚠️ No Breez SDK provided to Active panels - Lightning features may not work!"
+            );
         }
-        
+
         Self {
             current: Menu::Vault(crate::app::menu::VaultSubMenu::Home),
             vault_expanded: false,
@@ -272,7 +323,10 @@ impl Panels {
             active_receive,
             active_transactions,
             active_settings: ActiveSettings::new(wallet.clone()),
-            coins: Some(CoinsPanel::new(cache.coins(), wallet.main_descriptor.first_timelock_value())),
+            coins: Some(CoinsPanel::new(
+                cache.coins(),
+                wallet.main_descriptor.first_timelock_value(),
+            )),
             transactions: Some(TransactionsPanel::new(wallet.clone())),
             psbts: Some(PsbtsPanel::new(wallet.clone())),
             recovery: Some(new_recovery_panel(wallet.clone(), cache)),
@@ -291,7 +345,11 @@ impl Panels {
                 config.clone(),
             )),
             #[cfg(feature = "buysell")]
-            buy_sell: Some(crate::app::view::buysell::BuySellPanel::new(cache.network, wallet.clone(), data_dir.clone())),
+            buy_sell: Some(crate::app::view::buysell::BuySellPanel::new(
+                cache.network,
+                wallet.clone(),
+                data_dir.clone(),
+            )),
         }
     }
 
@@ -305,14 +363,38 @@ impl Panels {
                 crate::app::menu::ActiveSubMenu::Settings(_) => &self.active_settings,
             },
             Menu::Vault(submenu) => match submenu {
-                crate::app::menu::VaultSubMenu::Home => self.vault_home.as_ref().expect("Vault panel accessed without vault"),
-                crate::app::menu::VaultSubMenu::Send => self.create_spend.as_ref().expect("Vault panel accessed without vault"),
-                crate::app::menu::VaultSubMenu::Receive => self.receive.as_ref().expect("Vault panel accessed without vault"),
-                crate::app::menu::VaultSubMenu::Coins(_) => self.coins.as_ref().expect("Vault panel accessed without vault"),
-                crate::app::menu::VaultSubMenu::Transactions(_) => self.transactions.as_ref().expect("Vault panel accessed without vault"),
-                crate::app::menu::VaultSubMenu::PSBTs(_) => self.psbts.as_ref().expect("Vault panel accessed without vault"),
-                crate::app::menu::VaultSubMenu::Recovery => self.recovery.as_ref().expect("Vault panel accessed without vault"),
-                crate::app::menu::VaultSubMenu::Settings(_) => self.settings.as_ref().expect("Vault panel accessed without vault"),
+                crate::app::menu::VaultSubMenu::Home => self
+                    .vault_home
+                    .as_ref()
+                    .expect("Vault panel accessed without vault"),
+                crate::app::menu::VaultSubMenu::Send => self
+                    .create_spend
+                    .as_ref()
+                    .expect("Vault panel accessed without vault"),
+                crate::app::menu::VaultSubMenu::Receive => self
+                    .receive
+                    .as_ref()
+                    .expect("Vault panel accessed without vault"),
+                crate::app::menu::VaultSubMenu::Coins(_) => self
+                    .coins
+                    .as_ref()
+                    .expect("Vault panel accessed without vault"),
+                crate::app::menu::VaultSubMenu::Transactions(_) => self
+                    .transactions
+                    .as_ref()
+                    .expect("Vault panel accessed without vault"),
+                crate::app::menu::VaultSubMenu::PSBTs(_) => self
+                    .psbts
+                    .as_ref()
+                    .expect("Vault panel accessed without vault"),
+                crate::app::menu::VaultSubMenu::Recovery => self
+                    .recovery
+                    .as_ref()
+                    .expect("Vault panel accessed without vault"),
+                crate::app::menu::VaultSubMenu::Settings(_) => self
+                    .settings
+                    .as_ref()
+                    .expect("Vault panel accessed without vault"),
             },
             #[cfg(feature = "buysell")]
             Menu::BuySell => {
@@ -324,16 +406,46 @@ impl Panels {
                 }
             }
             // Legacy menu items
-            Menu::Receive => self.receive.as_ref().expect("Vault panel accessed without vault"),
-            Menu::PSBTs => self.psbts.as_ref().expect("Vault panel accessed without vault"),
-            Menu::Transactions => self.transactions.as_ref().expect("Vault panel accessed without vault"),
-            Menu::TransactionPreSelected(_) => self.transactions.as_ref().expect("Vault panel accessed without vault"),
-            Menu::Settings | Menu::SettingsPreSelected(_) => self.settings.as_ref().expect("Vault panel accessed without vault"),
-            Menu::Coins => self.coins.as_ref().expect("Vault panel accessed without vault"),
-            Menu::CreateSpendTx => self.create_spend.as_ref().expect("Vault panel accessed without vault"),
-            Menu::Recovery => self.recovery.as_ref().expect("Vault panel accessed without vault"),
-            Menu::RefreshCoins(_) => self.create_spend.as_ref().expect("Vault panel accessed without vault"),
-            Menu::PsbtPreSelected(_) => self.psbts.as_ref().expect("Vault panel accessed without vault"),
+            Menu::Receive => self
+                .receive
+                .as_ref()
+                .expect("Vault panel accessed without vault"),
+            Menu::PSBTs => self
+                .psbts
+                .as_ref()
+                .expect("Vault panel accessed without vault"),
+            Menu::Transactions => self
+                .transactions
+                .as_ref()
+                .expect("Vault panel accessed without vault"),
+            Menu::TransactionPreSelected(_) => self
+                .transactions
+                .as_ref()
+                .expect("Vault panel accessed without vault"),
+            Menu::Settings | Menu::SettingsPreSelected(_) => self
+                .settings
+                .as_ref()
+                .expect("Vault panel accessed without vault"),
+            Menu::Coins => self
+                .coins
+                .as_ref()
+                .expect("Vault panel accessed without vault"),
+            Menu::CreateSpendTx => self
+                .create_spend
+                .as_ref()
+                .expect("Vault panel accessed without vault"),
+            Menu::Recovery => self
+                .recovery
+                .as_ref()
+                .expect("Vault panel accessed without vault"),
+            Menu::RefreshCoins(_) => self
+                .create_spend
+                .as_ref()
+                .expect("Vault panel accessed without vault"),
+            Menu::PsbtPreSelected(_) => self
+                .psbts
+                .as_ref()
+                .expect("Vault panel accessed without vault"),
         }
     }
 
@@ -347,14 +459,38 @@ impl Panels {
                 crate::app::menu::ActiveSubMenu::Settings(_) => &mut self.active_settings,
             },
             Menu::Vault(submenu) => match submenu {
-                crate::app::menu::VaultSubMenu::Home => self.vault_home.as_mut().expect("Vault panel accessed without vault"),
-                crate::app::menu::VaultSubMenu::Send => self.create_spend.as_mut().expect("Vault panel accessed without vault"),
-                crate::app::menu::VaultSubMenu::Receive => self.receive.as_mut().expect("Vault panel accessed without vault"),
-                crate::app::menu::VaultSubMenu::Coins(_) => self.coins.as_mut().expect("Vault panel accessed without vault"),
-                crate::app::menu::VaultSubMenu::Transactions(_) => self.transactions.as_mut().expect("Vault panel accessed without vault"),
-                crate::app::menu::VaultSubMenu::PSBTs(_) => self.psbts.as_mut().expect("Vault panel accessed without vault"),
-                crate::app::menu::VaultSubMenu::Recovery => self.recovery.as_mut().expect("Vault panel accessed without vault"),
-                crate::app::menu::VaultSubMenu::Settings(_) => self.settings.as_mut().expect("Vault panel accessed without vault"),
+                crate::app::menu::VaultSubMenu::Home => self
+                    .vault_home
+                    .as_mut()
+                    .expect("Vault panel accessed without vault"),
+                crate::app::menu::VaultSubMenu::Send => self
+                    .create_spend
+                    .as_mut()
+                    .expect("Vault panel accessed without vault"),
+                crate::app::menu::VaultSubMenu::Receive => self
+                    .receive
+                    .as_mut()
+                    .expect("Vault panel accessed without vault"),
+                crate::app::menu::VaultSubMenu::Coins(_) => self
+                    .coins
+                    .as_mut()
+                    .expect("Vault panel accessed without vault"),
+                crate::app::menu::VaultSubMenu::Transactions(_) => self
+                    .transactions
+                    .as_mut()
+                    .expect("Vault panel accessed without vault"),
+                crate::app::menu::VaultSubMenu::PSBTs(_) => self
+                    .psbts
+                    .as_mut()
+                    .expect("Vault panel accessed without vault"),
+                crate::app::menu::VaultSubMenu::Recovery => self
+                    .recovery
+                    .as_mut()
+                    .expect("Vault panel accessed without vault"),
+                crate::app::menu::VaultSubMenu::Settings(_) => self
+                    .settings
+                    .as_mut()
+                    .expect("Vault panel accessed without vault"),
             },
             #[cfg(feature = "buysell")]
             Menu::BuySell => {
@@ -366,16 +502,46 @@ impl Panels {
                 }
             }
             // Legacy menu items
-            Menu::Receive => self.receive.as_mut().expect("Vault panel accessed without vault"),
-            Menu::PSBTs => self.psbts.as_mut().expect("Vault panel accessed without vault"),
-            Menu::Transactions => self.transactions.as_mut().expect("Vault panel accessed without vault"),
-            Menu::TransactionPreSelected(_) => self.transactions.as_mut().expect("Vault panel accessed without vault"),
-            Menu::Settings | Menu::SettingsPreSelected(_) => self.settings.as_mut().expect("Vault panel accessed without vault"),
-            Menu::Coins => self.coins.as_mut().expect("Vault panel accessed without vault"),
-            Menu::CreateSpendTx => self.create_spend.as_mut().expect("Vault panel accessed without vault"),
-            Menu::Recovery => self.recovery.as_mut().expect("Vault panel accessed without vault"),
-            Menu::RefreshCoins(_) => self.create_spend.as_mut().expect("Vault panel accessed without vault"),
-            Menu::PsbtPreSelected(_) => self.psbts.as_mut().expect("Vault panel accessed without vault"),
+            Menu::Receive => self
+                .receive
+                .as_mut()
+                .expect("Vault panel accessed without vault"),
+            Menu::PSBTs => self
+                .psbts
+                .as_mut()
+                .expect("Vault panel accessed without vault"),
+            Menu::Transactions => self
+                .transactions
+                .as_mut()
+                .expect("Vault panel accessed without vault"),
+            Menu::TransactionPreSelected(_) => self
+                .transactions
+                .as_mut()
+                .expect("Vault panel accessed without vault"),
+            Menu::Settings | Menu::SettingsPreSelected(_) => self
+                .settings
+                .as_mut()
+                .expect("Vault panel accessed without vault"),
+            Menu::Coins => self
+                .coins
+                .as_mut()
+                .expect("Vault panel accessed without vault"),
+            Menu::CreateSpendTx => self
+                .create_spend
+                .as_mut()
+                .expect("Vault panel accessed without vault"),
+            Menu::Recovery => self
+                .recovery
+                .as_mut()
+                .expect("Vault panel accessed without vault"),
+            Menu::RefreshCoins(_) => self
+                .create_spend
+                .as_mut()
+                .expect("Vault panel accessed without vault"),
+            Menu::PsbtPreSelected(_) => self
+                .psbts
+                .as_mut()
+                .expect("Vault panel accessed without vault"),
         }
     }
 }
@@ -391,7 +557,7 @@ pub struct App {
     datadir: LianaDirectory,
 
     panels: Panels,
-    
+
     /// Breez SDK connection manager (optional, enabled with "breez" feature)
     #[cfg(feature = "breez")]
     breez_connection_manager: Option<breez::BreezConnectionManager>,
@@ -409,10 +575,14 @@ impl App {
     ) -> (App, Task<Message>) {
         let config_arc = Arc::new(config);
         let cube_settings = settings::CubeSettings::new(
-            wallet.alias.clone().unwrap_or_else(|| "My Cube".to_string()),
+            wallet
+                .alias
+                .clone()
+                .unwrap_or_else(|| "My Cube".to_string()),
             cache.network,
-        ).with_vault(wallet.id());
-        
+        )
+        .with_vault(wallet.id());
+
         let mut panels = Panels::new(
             &cache,
             wallet.clone(),
@@ -422,13 +592,17 @@ impl App {
             config_arc.clone(),
             restored_from_backup,
         );
-        let cmd = panels.vault_home.as_mut().expect("vault_home must exist when vault present").reload(daemon.clone(), wallet.clone());
+        let cmd = panels
+            .vault_home
+            .as_mut()
+            .expect("vault_home must exist when vault present")
+            .reload(daemon.clone(), wallet.clone());
         let mut cache_with_vault = cache;
         cache_with_vault.has_vault = true;
-        
+
         #[cfg(feature = "breez")]
         let breez_connection_manager = None; // Will be initialized when needed
-        
+
         (
             Self {
                 panels,
@@ -459,10 +633,14 @@ impl App {
     ) -> (App, Task<Message>) {
         let config_arc = Arc::new(config);
         let cube_settings = settings::CubeSettings::new(
-            wallet.alias.clone().unwrap_or_else(|| "My Cube".to_string()),
+            wallet
+                .alias
+                .clone()
+                .unwrap_or_else(|| "My Cube".to_string()),
             cache.network,
-        ).with_vault(wallet.id());
-        
+        )
+        .with_vault(wallet.id());
+
         let mut panels = Panels::new_with_breez(
             &cache,
             wallet.clone(),
@@ -473,13 +651,17 @@ impl App {
             restored_from_backup,
             breez_manager,
         );
-        let cmd = panels.vault_home.as_mut().expect("vault_home must exist when vault present").reload(daemon.clone(), wallet.clone());
+        let cmd = panels
+            .vault_home
+            .as_mut()
+            .expect("vault_home must exist when vault present")
+            .reload(daemon.clone(), wallet.clone());
         let mut cache_with_vault = cache;
         cache_with_vault.has_vault = true;
-        
+
         #[cfg(feature = "breez")]
         let breez_connection_manager = None; // Will be initialized when needed
-        
+
         (
             Self {
                 panels,
@@ -496,7 +678,7 @@ impl App {
             cmd,
         )
     }
-    
+
     #[cfg(not(feature = "breez"))]
     pub fn new_with_breez(
         cache: Cache,
@@ -508,7 +690,15 @@ impl App {
         restored_from_backup: bool,
         _breez_manager: Option<()>,
     ) -> (App, Task<Message>) {
-        Self::new(cache, wallet, config, daemon, data_dir, internal_bitcoind, restored_from_backup)
+        Self::new(
+            cache,
+            wallet,
+            config,
+            daemon,
+            data_dir,
+            internal_bitcoind,
+            restored_from_backup,
+        )
     }
 
     pub fn new_without_wallet(
@@ -517,69 +707,93 @@ impl App {
         network: liana::miniscript::bitcoin::Network,
         cube_settings: settings::CubeSettings,
     ) -> (App, Task<Message>) {
-        tracing::info!("Creating app without wallet for cube: {}", cube_settings.name);
+        tracing::info!(
+            "Creating app without wallet for cube: {}",
+            cube_settings.name
+        );
         let config_arc = Arc::new(config);
         let mut cache = Cache::default();
         cache.network = network;
         cache.datadir_path = datadir.clone();
         cache.has_vault = false;
         tracing::debug!("Cache configured with has_vault=false");
-        
+
         // Auto-create Lightning wallet using Cube ID (since no vault wallet exists)
         #[cfg(feature = "breez")]
         let breez_manager = {
-            use crate::app::breez::{storage, auto_create_lightning_wallet, BreezConnectionManager};
-            
+            use crate::app::breez::{
+                auto_create_lightning_wallet, storage, BreezConnectionManager,
+            };
+
             let network_dir = datadir.network_directory(network);
             let wallet_checksum = &cube_settings.id; // Use Cube ID as wallet identifier
-            
+
             // Auto-create Lightning wallet if doesn't exist
-            if let Err(e) = auto_create_lightning_wallet(network_dir.path(), wallet_checksum, &cube_settings.name) {
+            if let Err(e) = auto_create_lightning_wallet(
+                network_dir.path(),
+                wallet_checksum,
+                &cube_settings.name,
+            ) {
                 tracing::error!("❌ Failed to auto-create Lightning wallet: {:?}", e);
             }
-            
+
             // Check if Lightning wallet exists
             if !storage::lightning_wallet_exists(network_dir.path(), wallet_checksum) {
-                tracing::warn!("⚠️ No Lightning wallet for Cube (no vault): {}", cube_settings.name);
+                tracing::warn!(
+                    "⚠️ No Lightning wallet for Cube (no vault): {}",
+                    cube_settings.name
+                );
                 None
             } else {
                 // Load mnemonic
                 match storage::load_lightning_mnemonic(network_dir.path(), wallet_checksum) {
                     Ok(mnemonic) => {
-                        tracing::info!("🔌 Initializing Breez SDK for Cube '{}' (no vault)...", cube_settings.name);
-                        
-                        // Create a temporary connection manager for this initialization
-                        let temp_manager = BreezConnectionManager::new(
-                            network,
-                            network_dir.path().to_path_buf(),
+                        tracing::info!(
+                            "🔌 Initializing Breez SDK for Cube '{}' (no vault)...",
+                            cube_settings.name
                         );
-                        
+
+                        // Create a temporary connection manager for this initialization
+                        let temp_manager =
+                            BreezConnectionManager::new(network, network_dir.path().to_path_buf());
+
                         // Use connection manager to get or create connection
                         match tokio::runtime::Handle::current().block_on(async {
                             temp_manager.get_or_create(wallet_checksum, &mnemonic).await
                         }) {
                             Ok(breez_arc) => {
-                                tracing::info!("✅ Breez SDK ready for Cube '{}'", cube_settings.name);
+                                tracing::info!(
+                                    "✅ Breez SDK ready for Cube '{}'",
+                                    cube_settings.name
+                                );
                                 // Clone the manager from Arc
                                 Some(breez_arc.as_ref().clone())
                             }
                             Err(e) => {
-                                tracing::error!("❌ Failed to initialize Breez SDK for Cube '{}': {:?}", cube_settings.name, e);
+                                tracing::error!(
+                                    "❌ Failed to initialize Breez SDK for Cube '{}': {:?}",
+                                    cube_settings.name,
+                                    e
+                                );
                                 None
                             }
                         }
                     }
                     Err(e) => {
-                        tracing::error!("❌ Failed to load Lightning mnemonic for Cube '{}': {:?}", cube_settings.name, e);
+                        tracing::error!(
+                            "❌ Failed to load Lightning mnemonic for Cube '{}': {:?}",
+                            cube_settings.name,
+                            e
+                        );
                         None
                     }
                 }
             }
         };
-        
+
         #[cfg(not(feature = "breez"))]
         let breez_manager = None;
-        
+
         // Create panels without wallet - only Active and other non-Vault features will be available
         let panels = Panels::new_without_wallet(
             datadir.clone(),
@@ -588,9 +802,9 @@ impl App {
             cube_settings.id.clone(),
             breez_manager.clone(),
         );
-        
+
         tracing::info!("App created without wallet successfully");
-        
+
         #[cfg(feature = "breez")]
         let breez_connection_manager = {
             // Initialize connection manager for Lightning-only cubes
@@ -600,7 +814,7 @@ impl App {
             );
             Some(manager)
         };
-        
+
         (
             Self {
                 panels,
@@ -642,21 +856,22 @@ impl App {
     pub fn wallet(&self) -> Option<&Wallet> {
         self.wallet.as_ref().map(|w| w.as_ref())
     }
-    
+
     pub fn has_vault(&self) -> bool {
         self.wallet.is_some()
     }
-    
+
     pub fn datadir(&self) -> &LianaDirectory {
         &self.datadir
     }
-    
+
     pub fn cube_settings(&self) -> &settings::CubeSettings {
         &self.cube_settings
     }
-    
+
     fn daemon_backend(&self) -> DaemonBackend {
-        self.daemon.as_ref()
+        self.daemon
+            .as_ref()
             .map(|d| d.backend())
             .unwrap_or(DaemonBackend::RemoteBackend)
     }
@@ -678,8 +893,8 @@ impl App {
                                         .map(|txs| txs.first().cloned())
                                 }) {
                                     if let Some(transactions) = &mut self.panels.transactions {
-                                    transactions.preselect(tx);
-                                }
+                                        transactions.preselect(tx);
+                                    }
                                     self.panels.current = menu;
                                     return Task::none();
                                 }
@@ -694,8 +909,8 @@ impl App {
                                         .map(|txs| txs.first().cloned())
                                 }) {
                                     if let Some(psbts) = &mut self.panels.psbts {
-                                    psbts.preselect(spend_tx);
-                                }
+                                        psbts.preselect(spend_tx);
+                                    }
                                     self.panels.current = menu;
                                     return Task::none();
                                 }
@@ -726,7 +941,12 @@ impl App {
                         }
                         menu::VaultSubMenu::Send => {
                             // redo the process of spending only if user want to start a new one.
-                            if self.panels.create_spend.as_ref().map_or(true, |p| !p.keep_state()) {
+                            if self
+                                .panels
+                                .create_spend
+                                .as_ref()
+                                .map_or(true, |p| !p.keep_state())
+                            {
                                 self.panels.create_spend = Some(CreateSpendPanel::new(
                                     wallet.clone(),
                                     self.cache.coins(),
@@ -736,14 +956,20 @@ impl App {
                             }
                         }
                         menu::VaultSubMenu::Recovery => {
-                            if self.panels.recovery.as_ref().map_or(true, |p| !p.keep_state()) {
-                                self.panels.recovery = Some(new_recovery_panel(wallet.clone(), &self.cache));
+                            if self
+                                .panels
+                                .recovery
+                                .as_ref()
+                                .map_or(true, |p| !p.keep_state())
+                            {
+                                self.panels.recovery =
+                                    Some(new_recovery_panel(wallet.clone(), &self.cache));
                             }
                         }
                         _ => {}
                     }
                 }
-            },
+            }
             menu::Menu::Active(submenu) => {
                 match submenu {
                     menu::ActiveSubMenu::Transactions(Some(txid)) => {
@@ -798,7 +1024,10 @@ impl App {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        tracing::trace!("App::subscription() called, has_vault={}", self.cache.has_vault);
+        tracing::trace!(
+            "App::subscription() called, has_vault={}",
+            self.cache.has_vault
+        );
         // Only create tick subscription if we have a vault (daemon exists)
         let subscriptions = if self.daemon.is_some() {
             vec![
@@ -843,7 +1072,7 @@ impl App {
 
     pub fn stop(&mut self) {
         info!("Close requested");
-        
+
         // Disconnect all Breez SDK connections
         #[cfg(feature = "breez")]
         if let Some(ref manager) = self.breez_connection_manager {
@@ -854,7 +1083,7 @@ impl App {
                 info!("✅ All Breez SDK connections disconnected");
             }
         }
-        
+
         if self.daemon_backend().is_embedded() {
             if let Some(daemon) = &self.daemon {
                 if let Err(e) = Handle::current().block_on(async { daemon.stop().await }) {
@@ -875,7 +1104,7 @@ impl App {
             tracing::debug!("Skipping tick - no vault configured");
             return Task::none();
         }
-        
+
         let tick = std::time::Instant::now();
         let mut tasks = if let Some(daemon) = &self.daemon {
             vec![self
@@ -979,18 +1208,22 @@ impl App {
             }
             Message::CacheUpdated => {
                 // Update vault panels with cache if they exist
-                if let (Some(daemon), Some(vault_home), Some(settings)) = 
-                    (&self.daemon, self.panels.vault_home.as_mut(), self.panels.settings.as_mut()) 
-                {
+                if let (Some(daemon), Some(vault_home), Some(settings)) = (
+                    &self.daemon,
+                    self.panels.vault_home.as_mut(),
+                    self.panels.settings.as_mut(),
+                ) {
                     let daemon = daemon.clone();
                     let current = &self.panels.current;
                     let cache = self.cache.clone();
-                    
+
                     let commands = vec![
                         vault_home.update(
                             daemon.clone(),
                             &cache,
-                            Message::UpdatePanelCache(current == &Menu::Vault(crate::app::menu::VaultSubMenu::Home)),
+                            Message::UpdatePanelCache(
+                                current == &Menu::Vault(crate::app::menu::VaultSubMenu::Home),
+                            ),
                         ),
                         settings.update(
                             daemon.clone(),
@@ -1057,7 +1290,7 @@ impl App {
             }
             Message::View(view::Message::Clipboard(text)) => clipboard::write(text),
 
-            // TODO: Move to panel.state  
+            // TODO: Move to panel.state
             _ => {
                 if let Some(daemon) = &self.daemon {
                     self.panels
@@ -1067,38 +1300,167 @@ impl App {
                     // No daemon available (Lightning-only cube without vault)
                     // Active panels don't actually use the daemon parameter, they use BreezWalletManager
                     // Create a minimal no-op daemon just to satisfy the trait bound
+                    use crate::daemon::{Daemon as DaemonTrait, DaemonBackend, DaemonError};
                     use std::sync::Arc;
-                    use crate::daemon::{Daemon as DaemonTrait, DaemonError, DaemonBackend};
-                    
+
                     #[derive(Debug)]
                     struct NoDaemon;
-                    
+
                     #[async_trait::async_trait]
                     impl DaemonTrait for NoDaemon {
-                        fn backend(&self) -> DaemonBackend { DaemonBackend::RemoteBackend }
-                        fn config(&self) -> Option<&lianad::config::Config> { None }
-                        async fn is_alive(&self, _: &crate::dir::LianaDirectory, _: bitcoin::Network) -> Result<(), DaemonError> { Ok(()) }
-                        async fn stop(&self) -> Result<(), DaemonError> { Ok(()) }
-                        async fn get_info(&self) -> Result<crate::daemon::model::GetInfoResult, DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn get_new_address(&self) -> Result<crate::daemon::model::GetAddressResult, DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn list_revealed_addresses(&self, _: bool, _: bool, _: usize, _: Option<bitcoin::bip32::ChildNumber>) -> Result<crate::daemon::model::ListRevealedAddressesResult, DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn update_deriv_indexes(&self, _: Option<u32>, _: Option<u32>) -> Result<lianad::commands::UpdateDerivIndexesResult, DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn list_coins(&self, _: &[lianad::commands::CoinStatus], _: &[bitcoin::OutPoint]) -> Result<crate::daemon::model::ListCoinsResult, DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn list_spend_txs(&self) -> Result<crate::daemon::model::ListSpendResult, DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn create_spend_tx(&self, _: &[bitcoin::OutPoint], _: &std::collections::HashMap<bitcoin::Address<bitcoin::address::NetworkUnchecked>, u64>, _: u64, _: Option<bitcoin::Address<bitcoin::address::NetworkUnchecked>>) -> Result<crate::daemon::model::CreateSpendResult, DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn rbf_psbt(&self, _: &bitcoin::Txid, _: bool, _: Option<u64>) -> Result<crate::daemon::model::CreateSpendResult, DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn update_spend_tx(&self, _: &bitcoin::Psbt) -> Result<(), DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn delete_spend_tx(&self, _: &bitcoin::Txid) -> Result<(), DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn broadcast_spend_tx(&self, _: &bitcoin::Txid) -> Result<(), DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn start_rescan(&self, _: u32) -> Result<(), DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn list_confirmed_txs(&self, _: u32, _: u32, _: u64) -> Result<crate::daemon::model::ListTransactionsResult, DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn list_txs(&self, _: &[bitcoin::Txid]) -> Result<crate::daemon::model::ListTransactionsResult, DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn create_recovery(&self, _: bitcoin::Address<bitcoin::address::NetworkUnchecked>, _: &[bitcoin::OutPoint], _: u64, _: Option<u16>) -> Result<bitcoin::Psbt, DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn get_labels(&self, _: &std::collections::HashSet<lianad::commands::LabelItem>) -> Result<std::collections::HashMap<String, String>, DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn update_labels(&self, _: &std::collections::HashMap<lianad::commands::LabelItem, Option<String>>) -> Result<(), DaemonError> { Err(DaemonError::NoAnswer) }
-                        async fn get_labels_bip329(&self, _: u32, _: u32) -> Result<lianad::bip329::Labels, DaemonError> { Err(DaemonError::NoAnswer) }
+                        fn backend(&self) -> DaemonBackend {
+                            DaemonBackend::RemoteBackend
+                        }
+                        fn config(&self) -> Option<&lianad::config::Config> {
+                            None
+                        }
+                        async fn is_alive(
+                            &self,
+                            _: &crate::dir::LianaDirectory,
+                            _: bitcoin::Network,
+                        ) -> Result<(), DaemonError> {
+                            Ok(())
+                        }
+                        async fn stop(&self) -> Result<(), DaemonError> {
+                            Ok(())
+                        }
+                        async fn get_info(
+                            &self,
+                        ) -> Result<crate::daemon::model::GetInfoResult, DaemonError>
+                        {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn get_new_address(
+                            &self,
+                        ) -> Result<crate::daemon::model::GetAddressResult, DaemonError>
+                        {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn list_revealed_addresses(
+                            &self,
+                            _: bool,
+                            _: bool,
+                            _: usize,
+                            _: Option<bitcoin::bip32::ChildNumber>,
+                        ) -> Result<crate::daemon::model::ListRevealedAddressesResult, DaemonError>
+                        {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn update_deriv_indexes(
+                            &self,
+                            _: Option<u32>,
+                            _: Option<u32>,
+                        ) -> Result<lianad::commands::UpdateDerivIndexesResult, DaemonError>
+                        {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn list_coins(
+                            &self,
+                            _: &[lianad::commands::CoinStatus],
+                            _: &[bitcoin::OutPoint],
+                        ) -> Result<crate::daemon::model::ListCoinsResult, DaemonError>
+                        {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn list_spend_txs(
+                            &self,
+                        ) -> Result<crate::daemon::model::ListSpendResult, DaemonError>
+                        {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn create_spend_tx(
+                            &self,
+                            _: &[bitcoin::OutPoint],
+                            _: &std::collections::HashMap<
+                                bitcoin::Address<bitcoin::address::NetworkUnchecked>,
+                                u64,
+                            >,
+                            _: u64,
+                            _: Option<bitcoin::Address<bitcoin::address::NetworkUnchecked>>,
+                        ) -> Result<crate::daemon::model::CreateSpendResult, DaemonError>
+                        {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn rbf_psbt(
+                            &self,
+                            _: &bitcoin::Txid,
+                            _: bool,
+                            _: Option<u64>,
+                        ) -> Result<crate::daemon::model::CreateSpendResult, DaemonError>
+                        {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn update_spend_tx(
+                            &self,
+                            _: &bitcoin::Psbt,
+                        ) -> Result<(), DaemonError> {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn delete_spend_tx(
+                            &self,
+                            _: &bitcoin::Txid,
+                        ) -> Result<(), DaemonError> {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn broadcast_spend_tx(
+                            &self,
+                            _: &bitcoin::Txid,
+                        ) -> Result<(), DaemonError> {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn start_rescan(&self, _: u32) -> Result<(), DaemonError> {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn list_confirmed_txs(
+                            &self,
+                            _: u32,
+                            _: u32,
+                            _: u64,
+                        ) -> Result<crate::daemon::model::ListTransactionsResult, DaemonError>
+                        {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn list_txs(
+                            &self,
+                            _: &[bitcoin::Txid],
+                        ) -> Result<crate::daemon::model::ListTransactionsResult, DaemonError>
+                        {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn create_recovery(
+                            &self,
+                            _: bitcoin::Address<bitcoin::address::NetworkUnchecked>,
+                            _: &[bitcoin::OutPoint],
+                            _: u64,
+                            _: Option<u16>,
+                        ) -> Result<bitcoin::Psbt, DaemonError> {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn get_labels(
+                            &self,
+                            _: &std::collections::HashSet<lianad::commands::LabelItem>,
+                        ) -> Result<std::collections::HashMap<String, String>, DaemonError>
+                        {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn update_labels(
+                            &self,
+                            _: &std::collections::HashMap<
+                                lianad::commands::LabelItem,
+                                Option<String>,
+                            >,
+                        ) -> Result<(), DaemonError> {
+                            Err(DaemonError::NoAnswer)
+                        }
+                        async fn get_labels_bip329(
+                            &self,
+                            _: u32,
+                            _: u32,
+                        ) -> Result<lianad::bip329::Labels, DaemonError> {
+                            Err(DaemonError::NoAnswer)
+                        }
                     }
-                    
+
                     let no_daemon: Arc<dyn DaemonTrait + Sync + Send> = Arc::new(NoDaemon);
                     self.panels
                         .current_mut()
@@ -1126,8 +1488,8 @@ impl App {
             .to_path_buf();
         daemon_config_path.push("daemon.toml");
 
-        let content =
-            toml::to_string(&self.daemon.as_ref().expect("daemon should exist").config()).map_err(|e| Error::Config(e.to_string()))?;
+        let content = toml::to_string(&self.daemon.as_ref().expect("daemon should exist").config())
+            .map_err(|e| Error::Config(e.to_string()))?;
 
         OpenOptions::new()
             .write(true)

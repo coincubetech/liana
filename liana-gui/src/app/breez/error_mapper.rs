@@ -8,13 +8,19 @@ use super::BreezError;
 pub fn friendly_error_message(error: &BreezError) -> String {
     match error {
         BreezError::ConnectionFailed(msg) => {
-            format!("Connection lost: {}. Please check your internet connection and try again.", msg)
+            format!(
+                "Connection lost: {}. Please check your internet connection and try again.",
+                msg
+            )
         }
         BreezError::NotInitialized => {
             "Wallet not ready. Please wait for initialization to complete.".to_string()
         }
         BreezError::SendFailed(msg) => {
-            format!("Payment failed: {}. Please check the destination and try again.", msg)
+            format!(
+                "Payment failed: {}. Please check the destination and try again.",
+                msg
+            )
         }
         BreezError::ReceiveFailed(msg) => {
             format!("Unable to generate invoice: {}. Please try again.", msg)
@@ -38,13 +44,19 @@ pub fn friendly_error_message(error: &BreezError) -> String {
             format!("Invalid derivation path: {}.", msg)
         }
         BreezError::LimitsFetchFailed(msg) => {
-            format!("Unable to fetch payment limits: {}. Please try again later.", msg)
+            format!(
+                "Unable to fetch payment limits: {}. Please try again later.",
+                msg
+            )
         }
         BreezError::BalanceFetchFailed(msg) => {
             format!("Unable to fetch balance: {}. Please try again later.", msg)
         }
         BreezError::EventListenerFailed(msg) => {
-            format!("Event listener failed: {}. The app may not receive real-time updates.", msg)
+            format!(
+                "Event listener failed: {}. The app may not receive real-time updates.",
+                msg
+            )
         }
         BreezError::SdkError(msg) => {
             if msg.contains("timeout") || msg.contains("timed out") {
@@ -52,14 +64,15 @@ pub fn friendly_error_message(error: &BreezError) -> String {
             } else if msg.contains("offline") || msg.contains("unreachable") {
                 "Service temporarily unavailable. Please try again later.".to_string()
             } else {
-                format!("An error occurred: {}. Please try again or contact support.", msg)
+                format!(
+                    "An error occurred: {}. Please try again or contact support.",
+                    msg
+                )
             }
         }
 
         // Catch-all
-        _ => {
-            "Something went wrong. Please try again or restart the application.".to_string()
-        }
+        _ => "Something went wrong. Please try again or restart the application.".to_string(),
     }
 }
 
@@ -87,7 +100,7 @@ pub fn error_action_hint(error: &BreezError) -> Option<String> {
 #[cfg(feature = "breez")]
 pub fn full_error_message(error: &BreezError) -> String {
     let message = friendly_error_message(error);
-    
+
     if let Some(hint) = error_action_hint(error) {
         format!("{}\n\n{}", message, hint)
     } else {

@@ -6,8 +6,8 @@ use super::BreezError;
 
 #[cfg(feature = "breez")]
 use breez_sdk_liquid::prelude::{
-    LiquidSdk, PayAmount, PaymentMethod, PrepareSendRequest, PrepareSendResponse,
-    SendPaymentRequest, SendPaymentResponse, Limits
+    Limits, LiquidSdk, PayAmount, PaymentMethod, PrepareSendRequest, PrepareSendResponse,
+    SendPaymentRequest, SendPaymentResponse,
 };
 
 /// Breez send payment manager
@@ -87,11 +87,11 @@ impl BreezSendManager {
             .fetch_lightning_limits()
             .await
             .map_err(|e| BreezError::LimitsFetchFailed(e.to_string()))
-            .and_then(|limits| {
-                match payment_method {
-                    PaymentMethod::Bolt11Invoice => Ok(limits.send),
-                    _ => Err(BreezError::LimitsFetchFailed("Unsupported payment method".to_string())),
-                }
+            .and_then(|limits| match payment_method {
+                PaymentMethod::Bolt11Invoice => Ok(limits.send),
+                _ => Err(BreezError::LimitsFetchFailed(
+                    "Unsupported payment method".to_string(),
+                )),
             })
     }
 
@@ -100,4 +100,3 @@ impl BreezSendManager {
         Err(BreezError::NotInitialized)
     }
 }
-

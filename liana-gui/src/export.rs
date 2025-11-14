@@ -1229,7 +1229,18 @@ pub async fn import_backup_at_launch(
     ),
     RestoreBackupError,
 > {
-    import_backup_at_launch_impl(cache, wallet, config, daemon, datadir, internal_bitcoind, backup, Some(breez_manager)).await.map(|(c, w, cfg, d, dir, b, bm)| (c, w, cfg, d, dir, b, bm.unwrap()))
+    import_backup_at_launch_impl(
+        cache,
+        wallet,
+        config,
+        daemon,
+        datadir,
+        internal_bitcoind,
+        backup,
+        Some(breez_manager),
+    )
+    .await
+    .map(|(c, w, cfg, d, dir, b, bm)| (c, w, cfg, d, dir, b, bm.unwrap()))
 }
 
 #[cfg(not(feature = "breez"))]
@@ -1252,7 +1263,18 @@ pub async fn import_backup_at_launch(
     ),
     RestoreBackupError,
 > {
-    import_backup_at_launch_impl(cache, wallet, config, daemon, datadir, internal_bitcoind, backup, None).await.map(|(c, w, cfg, d, dir, b, _)| (c, w, cfg, d, dir, b))
+    import_backup_at_launch_impl(
+        cache,
+        wallet,
+        config,
+        daemon,
+        datadir,
+        internal_bitcoind,
+        backup,
+        None,
+    )
+    .await
+    .map(|(c, w, cfg, d, dir, b, _)| (c, w, cfg, d, dir, b))
 }
 
 async fn import_backup_at_launch_impl(
@@ -1356,7 +1378,15 @@ async fn import_backup_at_launch_impl(
         }
     }
 
-    Ok((cache, wallet, config, daemon, datadir, internal_bitcoind, breez_manager))
+    Ok((
+        cache,
+        wallet,
+        config,
+        daemon,
+        datadir,
+        internal_bitcoind,
+        breez_manager,
+    ))
 }
 
 pub async fn export_labels(
