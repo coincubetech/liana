@@ -71,7 +71,6 @@ pub async fn setup_event_listener(
     sdk: Arc<LiquidSdk>,
 ) -> Result<mpsc::UnboundedReceiver<BreezEvent>, BreezError> {
     let (sender, receiver) = mpsc::unbounded_channel();
-    let _handler = Arc::new(BreezEventHandler::new(sender.clone()));
 
     sdk.add_event_listener(Box::new(BreezEventHandler::new(sender)))
         .await

@@ -831,6 +831,10 @@ impl DeleteCubeModal {
                     }
                 }
                 
+                // NOTE: Breez SDK disconnection for this cube should be handled at the App level
+                // The App has access to the breez_connection_manager and can call:
+                // manager.disconnect(&wallet_checksum).await when DeleteCubeMessage::Deleted is received
+                
                 // Delete the cube from cubes.json
                 let network_dir = self.network_directory.clone();
                 let cube_id = self.cube.id.clone();

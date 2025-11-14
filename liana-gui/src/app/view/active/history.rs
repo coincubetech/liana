@@ -14,7 +14,7 @@ use crate::app::view::{ActiveMessage, Message as ViewMessage};
 use liana_ui::component::text::Text as TextTrait;
 
 #[cfg(feature = "breez")]
-use breez_sdk_liquid::prelude::{Payment, PaymentType};
+use crate::app::breez::{PaymentInfo, PaymentDirection, PaymentStatus};
 
 /// Format Unix timestamp to human-readable date/time
 #[allow(dead_code)]
@@ -71,7 +71,7 @@ impl std::fmt::Display for PaymentFilter {
 }
 
 pub fn view_history<'a>(
-    #[cfg(feature = "breez")] payments: &'a [Payment],
+    #[cfg(feature = "breez")] payments: &'a [PaymentInfo],
     #[cfg(not(feature = "breez"))] _payments: &'a [()],
     filter: PaymentFilter,
 ) -> Element<'a, ViewMessage> {
@@ -107,7 +107,7 @@ pub fn view_history<'a>(
     // Payment list
     #[cfg(feature = "breez")]
     {
-        let filtered_payments: Vec<&Payment> = payments
+        let filtered_payments: Vec<&PaymentInfo> = payments
             .iter()
             .filter(|p| matches_filter(p, filter))
             .collect();
@@ -175,39 +175,29 @@ fn filter_button(filter: PaymentFilter, current: PaymentFilter) -> Element<'stat
 
 #[cfg(feature = "breez")]
 #[allow(dead_code)]
-fn matches_filter(payment: &Payment, filter: PaymentFilter) -> bool {
-    use breez_sdk_liquid::prelude::PaymentState;
-    
+fn matches_filter(payment: &PaymentInfo, filter: PaymentFilter) -> bool {
     match filter {
         PaymentFilter::All => true,
-        PaymentFilter::Sent => matches!(payment.payment_type, PaymentType::Send),
-        PaymentFilter::Received => matches!(payment.payment_type, PaymentType::Receive),
-        PaymentFilter::Pending => matches!(payment.status, PaymentState::Pending),
-        PaymentFilter::Failed => matches!(payment.status, PaymentState::Failed),
+        PaymentFilter::Sent => payment.direction == PaymentDirection::Outgoing,
+        PaymentFilter::Received => payment.direction == PaymentDirection::Incoming,
+        PaymentFilter::Pending => payment.status == PaymentStatus::Pending,
+        PaymentFilter::Failed => payment.status == PaymentStatus::Failed,
     }
 }
 
 #[cfg(feature = "breez")]
-fn payment_item<'a>(payment: &'a Payment) -> Element<'a, ViewMessage> {
-    use breez_sdk_liquid::prelude::PaymentState;
-    
-    let is_send = matches!(payment.payment_type, PaymentType::Send);
+fn payment_item<'a>(payment: &'a PaymentInfo) -> Element<'a, ViewMessage> {
+    let is_send = payment.direction == PaymentDirection::Outgoing;
     let icon_text = if is_send { "↗" } else { "↙" };
     let icon_color = if is_send { color::ORANGE } else { color::GREEN };
     
-    let status_text = match payment.status {
-        PaymentState::Pending => "Pending",
-        PaymentState::Complete => "Complete",
-        PaymentState::Failed => "Failed",
-        _ => "Unknown",
-    };
-    
     let status_color = match payment.status {
-        PaymentState::Complete => color::GREEN,
-        PaymentState::Pending => color::ORANGE,
-        PaymentState::Failed => color::RED,
-        _ => color::GREY_3,
+        PaymentStatus::Complete => color::GREEN,
+        PaymentStatus::Pending => color::ORANGE,
+        PaymentStatus::Failed => color::RED,
     };
+
+    let description = payment.description.clone().unwrap_or_else(|| payment.payment_type.clone());
 
     container(
         Row::new()
@@ -224,17 +214,15 @@ fn payment_item<'a>(payment: &'a Payment) -> Element<'a, ViewMessage> {
                     .push(
                         Row::new()
                             .spacing(10)
-                            .push(ui_text::text(format!("{} sats", payment.amount_sat)))
-                            .push(TextTrait::small(ui_text::text(status_text)).style(move |_theme| iced::widget::text::Style { color: Some(status_color) }))
+                            .push(ui_text::text(&payment.formatted_amount()))
+                            .push(TextTrait::small(ui_text::text(payment.status_display())).style(move |_theme| iced::widget::text::Style { color: Some(status_color) }))
                     )
                     .push(
-                        TextTrait::small(ui_text::text(
-                            "Lightning payment" // Payment.details is PaymentDetails enum, not Option<String>
-                        ))
+                        TextTrait::small(ui_text::text(&description))
                         .style(|_theme| iced::widget::text::Style { color: Some(color::GREY_3) })
                     )
                     .push(
-                        ui_text::text(format_timestamp(Some(payment.timestamp as u64)))
+                        ui_text::text(&payment.formatted_date())
                         .size(10)
                         .style(|_theme| iced::widget::text::Style { color: Some(color::GREY_3) })
                     )

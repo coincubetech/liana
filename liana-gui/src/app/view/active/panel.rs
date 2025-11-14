@@ -18,7 +18,7 @@ use crate::app::{
 use liana_ui::component::text::Text as TextTrait;
 
 #[cfg(feature = "breez")]
-use crate::app::breez::{BalanceInfo, BreezWalletManager};
+use crate::app::breez::{BalanceInfo, BreezWalletManager, PaymentInfo};
 
 #[cfg(feature = "breez")]
 use breez_sdk_liquid::prelude::{
@@ -59,6 +59,14 @@ pub struct ActivePanel {
     pub generated_invoice: Option<String>,
     #[cfg(feature = "breez")]
     pub lightning_address: Option<String>,
+
+    // Payment history state
+    #[cfg(feature = "breez")]
+    pub payments: Vec<PaymentInfo>,
+    #[cfg(feature = "breez")]
+    pub loading_payments: bool,
+    #[cfg(feature = "breez")]
+    pub payment_error: Option<String>,
 
     // Wallet data
     pub wallet: Option<std::sync::Arc<crate::app::wallet::Wallet>>,
@@ -138,6 +146,12 @@ impl ActivePanel {
             generated_invoice: None,
             #[cfg(feature = "breez")]
             lightning_address: None,
+            #[cfg(feature = "breez")]
+            payments: Vec::new(),
+            #[cfg(feature = "breez")]
+            loading_payments: false,
+            #[cfg(feature = "breez")]
+            payment_error: None,
             wallet,
             data_dir,
         };
@@ -178,6 +192,12 @@ impl ActivePanel {
             generated_invoice: None,
             #[cfg(feature = "breez")]
             lightning_address: None,
+            #[cfg(feature = "breez")]
+            payments: Vec::new(),
+            #[cfg(feature = "breez")]
+            loading_payments: false,
+            #[cfg(feature = "breez")]
+            payment_error: None,
             wallet: None,
             data_dir,
         }
@@ -1371,41 +1391,17 @@ impl ActivePanel {
             .spacing(20)
             .padding(20);
 
-        col = col.push(
-            Row::new()
-                .spacing(10)
-                .align_y(iced::Alignment::Center)
-                .push(ui_text::h2("Payment History"))
-                .push(Space::with_width(Length::Fill))
-                .push(
-                    ui_button::secondary(None, "Refresh")
-                        .on_press(ViewMessage::Active(ActiveMessage::RefreshHistory))
-                        .width(Length::Shrink)
-                )
-        );
-
-        // Placeholder for payment list
-        col = col.push(
-            container(
-                Column::new()
-                    .spacing(10)
-                    .push(
-                        ui_text::text("No transactions yet")
-                            .size(16)
-                            .style(|_| iced::widget::text::Style { color: Some(color::GREY_3) })
-                    )
-                    .push(
-                        TextTrait::small(ui_text::text("Your Lightning payment history will appear here"))
-                            .style(|_| iced::widget::text::Style { color: Some(color::GREY_3) })
-                    )
-            )
-            .padding(40)
-            .width(Length::Fill)
-            .center_x(Length::Fill)
-            .style(theme::card::simple)
-        );
-
-        col.into()
+        use super::history::{view_history, PaymentFilter};
+        
+        #[cfg(feature = "breez")]
+        {
+            view_history(&self.payments, PaymentFilter::All)
+        }
+        
+        #[cfg(not(feature = "breez"))]
+        {
+            view_history(&[], PaymentFilter::All)
+        }
     }
 
     // Breez SDK operations
@@ -1632,6 +1628,41 @@ impl ActivePanel {
                     Err(_) => ActiveMessage::Error("Failed to fetch receive limits".to_string()),
                 }))
             },
+        )
+    }
+
+    #[cfg(feature = "breez")]
+    pub fn load_payment_history(&mut self) -> iced::Task<crate::app::message::Message> {
+        use crate::app::breez::BreezPaymentManager;
+
+        let Some(ref manager) = self.breez_manager else {
+            return iced::Task::none();
+        };
+
+        let Ok(sdk) = manager.sdk() else {
+            return iced::Task::none();
+        };
+
+        self.loading_payments = true;
+        self.payment_error = None;
+
+        let payment_manager = BreezPaymentManager::new(sdk);
+
+        iced::Task::perform(
+            async move {
+                match payment_manager.list_payments().await {
+                    Ok(payments) => {
+                        // Convert SDK Payment to our PaymentInfo
+                        let payment_infos: Vec<crate::app::breez::PaymentInfo> = 
+                            payments.into_iter().map(|p| p.into()).collect();
+                        crate::app::view::ActiveMessage::PaymentHistoryLoaded(payment_infos)
+                    }
+                    Err(e) => crate::app::view::ActiveMessage::PaymentHistoryLoadFailed(
+                        format!("Failed to load payments: {}", e)
+                    ),
+                }
+            },
+            |msg| crate::app::message::Message::View(crate::app::view::Message::Active(msg)),
         )
     }
 }

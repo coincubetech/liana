@@ -28,9 +28,13 @@ pub mod receive;
 #[cfg(feature = "breez")]
 pub mod events;
 #[cfg(feature = "breez")]
-pub mod init;
-#[cfg(feature = "breez")]
 pub mod storage;
+#[cfg(feature = "breez")]
+pub mod connection_manager;
+#[cfg(feature = "breez")]
+pub mod helpers;
+#[cfg(feature = "breez")]
+pub mod payments;
 
 pub use error::BreezError;
 
@@ -45,9 +49,15 @@ pub use receive::{BalanceInfo, BreezReceiveManager};
 #[cfg(feature = "breez")]
 pub use error_mapper::{error_action_hint, friendly_error_message, full_error_message};
 #[cfg(feature = "breez")]
-pub use events::{setup_event_listener, BreezEventHandler};
+pub use events::{setup_event_listener, BreezEventHandler, BreezEvent};
 #[cfg(feature = "breez")]
 pub use storage::{generate_lightning_mnemonic, lightning_wallet_exists, store_lightning_mnemonic, load_lightning_mnemonic};
+#[cfg(feature = "breez")]
+pub use connection_manager::{BreezConnectionManager, ConnectionState};
+#[cfg(feature = "breez")]
+pub use helpers::{get_or_create_breez_connection, auto_create_lightning_wallet};
+#[cfg(feature = "breez")]
+pub use payments::{BreezPaymentManager, PaymentInfo, PaymentDirection, PaymentStatus};
 
 
 

@@ -291,13 +291,17 @@ pub enum ActiveMessage {
     LimitsFetched(u64, u64), // (min_sat, max_sat)
 
     // Receive messages
-    RefreshHistory,
-    FilterChanged(String),
-    PaymentsLoaded(Vec<breez_sdk_liquid::prelude::Payment>),
     DescriptionEdited(String),
     PrepareReceive,
     GenerateInvoice,
     NewInvoice,
+    
+    // Payment history messages
+    LoadPaymentHistory,
+    PaymentHistoryLoaded(Vec<crate::app::breez::PaymentInfo>),
+    PaymentHistoryLoadFailed(String),
+    FilterChanged(String),
+    RefreshHistory,
     
     // Confirmation messages
     ShowConfirmation,

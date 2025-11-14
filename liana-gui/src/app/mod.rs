@@ -391,6 +391,10 @@ pub struct App {
     datadir: LianaDirectory,
 
     panels: Panels,
+    
+    /// Breez SDK connection manager (optional, enabled with "breez" feature)
+    #[cfg(feature = "breez")]
+    breez_connection_manager: Option<breez::BreezConnectionManager>,
 }
 
 impl App {
@@ -421,6 +425,10 @@ impl App {
         let cmd = panels.vault_home.as_mut().expect("vault_home must exist when vault present").reload(daemon.clone(), wallet.clone());
         let mut cache_with_vault = cache;
         cache_with_vault.has_vault = true;
+        
+        #[cfg(feature = "breez")]
+        let breez_connection_manager = None; // Will be initialized when needed
+        
         (
             Self {
                 panels,
@@ -431,6 +439,8 @@ impl App {
                 cube_settings,
                 config: config_arc,
                 datadir: data_dir,
+                #[cfg(feature = "breez")]
+                breez_connection_manager,
             },
             cmd,
         )
@@ -466,6 +476,10 @@ impl App {
         let cmd = panels.vault_home.as_mut().expect("vault_home must exist when vault present").reload(daemon.clone(), wallet.clone());
         let mut cache_with_vault = cache;
         cache_with_vault.has_vault = true;
+        
+        #[cfg(feature = "breez")]
+        let breez_connection_manager = None; // Will be initialized when needed
+        
         (
             Self {
                 panels,
@@ -476,6 +490,8 @@ impl App {
                 cube_settings,
                 config: config_arc,
                 datadir: data_dir,
+                #[cfg(feature = "breez")]
+                breez_connection_manager,
             },
             cmd,
         )
@@ -512,60 +528,51 @@ impl App {
         // Auto-create Lightning wallet using Cube ID (since no vault wallet exists)
         #[cfg(feature = "breez")]
         let breez_manager = {
-            use crate::app::breez::storage;
-            use crate::app::breez::wallet::BreezWalletManager;
+            use crate::app::breez::{storage, auto_create_lightning_wallet, BreezConnectionManager};
             
             let network_dir = datadir.network_directory(network);
             let wallet_checksum = &cube_settings.id; // Use Cube ID as wallet identifier
             
-            // Ensure Lightning wallet exists
+            // Auto-create Lightning wallet if doesn't exist
+            if let Err(e) = auto_create_lightning_wallet(network_dir.path(), wallet_checksum, &cube_settings.name) {
+                tracing::error!("❌ Failed to auto-create Lightning wallet: {:?}", e);
+            }
+            
+            // Check if Lightning wallet exists
             if !storage::lightning_wallet_exists(network_dir.path(), wallet_checksum) {
-                match storage::generate_lightning_mnemonic() {
+                tracing::warn!("⚠️ No Lightning wallet for Cube (no vault): {}", cube_settings.name);
+                None
+            } else {
+                // Load mnemonic
+                match storage::load_lightning_mnemonic(network_dir.path(), wallet_checksum) {
                     Ok(mnemonic) => {
-                        match storage::store_lightning_mnemonic(network_dir.path(), wallet_checksum, &mnemonic) {
-                            Ok(_) => {
-                                tracing::info!("✅ Auto-created Lightning wallet for Cube '{}' (no vault wallet)", cube_settings.name);
-                                tracing::info!("📁 Lightning wallet stored at: {}/lightning/", wallet_checksum);
+                        tracing::info!("🔌 Initializing Breez SDK for Cube '{}' (no vault)...", cube_settings.name);
+                        
+                        // Create a temporary connection manager for this initialization
+                        let temp_manager = BreezConnectionManager::new(
+                            network,
+                            network_dir.path().to_path_buf(),
+                        );
+                        
+                        // Use connection manager to get or create connection
+                        match tokio::runtime::Handle::current().block_on(async {
+                            temp_manager.get_or_create(wallet_checksum, &mnemonic).await
+                        }) {
+                            Ok(breez_arc) => {
+                                tracing::info!("✅ Breez SDK ready for Cube '{}'", cube_settings.name);
+                                // Clone the manager from Arc
+                                Some(breez_arc.as_ref().clone())
                             }
                             Err(e) => {
-                                tracing::error!("❌ Failed to store Lightning wallet for Cube '{}': {}", cube_settings.name, e);
+                                tracing::error!("❌ Failed to initialize Breez SDK for Cube '{}': {:?}", cube_settings.name, e);
+                                None
                             }
                         }
                     }
                     Err(e) => {
-                        tracing::error!("❌ Failed to generate Lightning mnemonic for Cube '{}': {}", cube_settings.name, e);
+                        tracing::error!("❌ Failed to load Lightning mnemonic for Cube '{}': {:?}", cube_settings.name, e);
+                        None
                     }
-                }
-            } else {
-                tracing::info!("⚡ Lightning wallet already exists for Cube '{}'", cube_settings.name);
-            }
-            
-            // Load and initialize Breez SDK
-            tracing::debug!("Attempting to load Lightning mnemonic from: {}/lightning/", wallet_checksum);
-            match storage::load_lightning_mnemonic(network_dir.path(), wallet_checksum) {
-                Ok(mnemonic) => {
-                    tracing::info!("⏳ Initializing Breez SDK for Cube '{}'...", cube_settings.name);
-                    tracing::debug!("Mnemonic loaded successfully, initializing Breez SDK at: {}/breez/", wallet_checksum);
-                    
-                    // Initialize Breez SDK asynchronously
-                    let breez_data_dir = network_dir.path().join(wallet_checksum).join("breez");
-                    match tokio::runtime::Handle::current().block_on(async {
-                        BreezWalletManager::initialize(&mnemonic, network, &breez_data_dir).await
-                    }) {
-                        Ok(manager) => {
-                            tracing::info!("✅ Breez SDK initialized successfully for Cube '{}'", cube_settings.name);
-                            Some(manager)
-                        }
-                        Err(e) => {
-                            tracing::error!("❌ Failed to initialize Breez SDK for Cube '{}': {:?}", cube_settings.name, e);
-                            None
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("❌ Failed to load Lightning mnemonic for Cube '{}': {:?}", cube_settings.name, e);
-                    tracing::error!("   Lightning mnemonic file should be at: {}/lightning/mnemonic", wallet_checksum);
-                    None
                 }
             }
         };
@@ -583,6 +590,17 @@ impl App {
         );
         
         tracing::info!("App created without wallet successfully");
+        
+        #[cfg(feature = "breez")]
+        let breez_connection_manager = {
+            // Initialize connection manager for Lightning-only cubes
+            let manager = breez::BreezConnectionManager::new(
+                network,
+                datadir.network_directory(network).path().to_path_buf(),
+            );
+            Some(manager)
+        };
+        
         (
             Self {
                 panels,
@@ -593,6 +611,8 @@ impl App {
                 cube_settings,
                 config: config_arc,
                 datadir,
+                #[cfg(feature = "breez")]
+                breez_connection_manager,
             },
             Task::none(),
         )
@@ -823,6 +843,18 @@ impl App {
 
     pub fn stop(&mut self) {
         info!("Close requested");
+        
+        // Disconnect all Breez SDK connections
+        #[cfg(feature = "breez")]
+        if let Some(ref manager) = self.breez_connection_manager {
+            info!("🔌 Disconnecting all Breez SDK connections...");
+            if let Err(e) = Handle::current().block_on(async { manager.disconnect_all().await }) {
+                error!("Failed to disconnect Breez SDK: {}", e);
+            } else {
+                info!("✅ All Breez SDK connections disconnected");
+            }
+        }
+        
         if self.daemon_backend().is_embedded() {
             if let Some(daemon) = &self.daemon {
                 if let Err(e) = Handle::current().block_on(async { daemon.stop().await }) {

@@ -52,6 +52,11 @@ impl State for ActivePanel {
             }
             ActiveMessage::ShowHistoryPanel => {
                 self.active_panel = crate::app::view::active::ActiveSubPanel::History;
+                // Auto-load payment history when entering history panel
+                #[cfg(feature = "breez")]
+                if self.payments.is_empty() && !self.loading_payments {
+                    return self.load_payment_history();
+                }
             }
             ActiveMessage::ShowSettingsPanel => {
                 self.active_panel = crate::app::view::active::ActiveSubPanel::Settings;
@@ -105,12 +110,19 @@ impl State for ActivePanel {
                     
                     return Task::perform(
                         async move {
-                            crate::app::breez::init::initialize_breez_sdk(
-                                mnemonic_clone,
+                            // Initialize wallet manager
+                            let manager = crate::app::breez::BreezWalletManager::initialize(
+                                &mnemonic_clone,
                                 network,
-                                breez_data_dir,
+                                &breez_data_dir,
                             )
-                            .await
+                            .await?;
+                            
+                            // Setup event listener
+                            let sdk = manager.sdk()?;
+                            let event_receiver = crate::app::breez::setup_event_listener(sdk).await?;
+                            
+                            Ok((std::sync::Arc::new(manager), event_receiver))
                         },
                         Message::BreezInitialized,
                     );
@@ -210,12 +222,19 @@ impl State for ActivePanel {
                             
                             return Task::perform(
                                 async move {
-                                    crate::app::breez::init::initialize_breez_sdk(
-                                        mnemonic_for_init,
+                                    // Initialize wallet manager
+                                    let manager = crate::app::breez::BreezWalletManager::initialize(
+                                        &mnemonic_for_init,
                                         network,
-                                        breez_data_dir,
+                                        &breez_data_dir,
                                     )
-                                    .await
+                                    .await?;
+                                    
+                                    // Setup event listener
+                                    let sdk = manager.sdk()?;
+                                    let event_receiver = crate::app::breez::setup_event_listener(sdk).await?;
+                                    
+                                    Ok((std::sync::Arc::new(manager), event_receiver))
                                 },
                                 Message::BreezInitialized,
                             );
@@ -340,8 +359,32 @@ impl State for ActivePanel {
             ActiveMessage::LimitsFetched(min_sat, max_sat) => {
                 self.payment_limits = Some((min_sat, max_sat));
             }
-            ActiveMessage::FilterChanged(_filter) => {}
-            ActiveMessage::PaymentsLoaded(_payments) => {}
+            ActiveMessage::FilterChanged(_filter) => {
+                // TODO: Implement payment filtering
+            }
+            ActiveMessage::LoadPaymentHistory => {
+                #[cfg(feature = "breez")]
+                return self.load_payment_history();
+                #[cfg(not(feature = "breez"))]
+                {
+                    self.payment_error = Some("Breez feature not enabled".to_string());
+                }
+            }
+            #[cfg(feature = "breez")]
+            ActiveMessage::PaymentHistoryLoaded(payments) => {
+                self.payments = payments;
+                self.loading_payments = false;
+                self.payment_error = None;
+            }
+            #[cfg(feature = "breez")]
+            ActiveMessage::PaymentHistoryLoadFailed(error) => {
+                self.loading_payments = false;
+                self.payment_error = Some(error);
+            }
+            ActiveMessage::RefreshHistory => {
+                #[cfg(feature = "breez")]
+                return self.load_payment_history();
+            }
             ActiveMessage::PrepareReceive => {
                 self.error = Some("Prepare receive not yet implemented".to_string());
             }

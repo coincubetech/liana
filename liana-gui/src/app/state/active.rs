@@ -613,7 +613,7 @@ impl ActiveReceive {
         col = col.push(
             Column::new()
                 .spacing(5)
-                .push(TextTrait::small(ui_text::text("Amount (sats) - Optional")))
+                .push(TextTrait::small(ui_text::text("Amount (sats)")))
                 .push(
                     TextInput::new("Leave empty for any amount", &self.amount)
                         .on_input(|value| view::Message::Active(view::ActiveMessage::AmountEdited(value)))

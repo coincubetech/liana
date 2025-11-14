@@ -495,55 +495,51 @@ pub async fn load_application(
     // Auto-create and initialize Lightning wallet when vault loads
     #[cfg(feature = "breez")]
     let breez_manager = {
-        use crate::app::breez::{storage, wallet::BreezWalletManager};
+        use crate::app::breez::{storage, auto_create_lightning_wallet, BreezConnectionManager};
         
         let network_dir = datadir_path.network_directory(network);
         let wallet_checksum = &wallet.descriptor_checksum;
         
         // Auto-create if doesn't exist
+        if let Err(e) = auto_create_lightning_wallet(network_dir.path(), wallet_checksum, &wallet.name) {
+            tracing::error!("❌ Failed to auto-create Lightning wallet: {:?}", e);
+        }
+        
+        // Check if Lightning wallet exists
         if !storage::lightning_wallet_exists(network_dir.path(), wallet_checksum) {
-            match storage::generate_lightning_mnemonic() {
+            tracing::warn!("⚠️ No Lightning wallet for Cube: {}", wallet.name);
+            None
+        } else {
+            // Load mnemonic
+            match storage::load_lightning_mnemonic(network_dir.path(), wallet_checksum) {
                 Ok(mnemonic) => {
-                    match storage::store_lightning_mnemonic(network_dir.path(), wallet_checksum, &mnemonic) {
-                        Ok(_) => {
-                            tracing::info!("✅ Auto-created Lightning wallet for Cube: {}", wallet.name);
-                            tracing::info!("📁 Lightning wallet stored at: {}/lightning/", wallet_checksum);
+                    tracing::info!("🔌 Initializing Breez SDK for Cube: {} (checksum: {})", wallet.name, wallet_checksum);
+                    
+                    // Create a temporary connection manager for this initialization
+                    // (In future, this should use a shared manager passed from App)
+                    let temp_manager = BreezConnectionManager::new(
+                        network,
+                        network_dir.path().to_path_buf(),
+                    );
+                    
+                    // Use connection manager to get or create connection
+                    match temp_manager.get_or_create(wallet_checksum, &mnemonic).await {
+                        Ok(breez_arc) => {
+                            tracing::info!("✅ Breez SDK ready for Cube: {}", wallet.name);
+                            // Clone the manager from Arc
+                            Some(breez_arc.as_ref().clone())
                         }
                         Err(e) => {
-                            tracing::error!("❌ Failed to store Lightning wallet for Cube {}: {}", wallet.name, e);
+                            tracing::error!("❌ Failed to initialize Breez SDK for Cube {}: {:?}", wallet.name, e);
+                            tracing::error!("   This might be a network issue, API key problem, or SDK error");
+                            None
                         }
                     }
                 }
                 Err(e) => {
-                    tracing::error!("❌ Failed to generate Lightning mnemonic for Cube {}: {}", wallet.name, e);
+                    tracing::error!("❌ Failed to load Lightning mnemonic for Cube {}: {:?}", wallet.name, e);
+                    None
                 }
-            }
-        } else {
-            tracing::info!("⚡ Lightning wallet already exists for Cube: {}", wallet.name);
-        }
-        
-        // Initialize Breez SDK
-        tracing::debug!("📂 Attempting to load Lightning mnemonic from: {}/lightning/", wallet_checksum);
-        match storage::load_lightning_mnemonic(network_dir.path(), wallet_checksum) {
-            Ok(mnemonic) => {
-                tracing::info!("🔌 Initializing Breez SDK for Cube: {}", wallet.name);
-                tracing::debug!("✓ Mnemonic loaded, initializing at: {}/breez/", wallet_checksum);
-                match BreezWalletManager::initialize(&mnemonic, network, network_dir.path()).await {
-                    Ok(manager) => {
-                        tracing::info!("✅ Breez SDK initialized successfully for Cube: {}", wallet.name);
-                        Some(manager)
-                    }
-                    Err(e) => {
-                        tracing::error!("❌ Failed to initialize Breez SDK for Cube {}: {:?}", wallet.name, e);
-                        tracing::error!("   This might be a network issue, API key problem, or SDK error");
-                        None
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::error!("❌ Failed to load Lightning mnemonic for Cube {}: {:?}", wallet.name, e);
-                tracing::error!("   Expected mnemonic file at: {}/lightning/mnemonic", wallet_checksum);
-                None
             }
         }
     };

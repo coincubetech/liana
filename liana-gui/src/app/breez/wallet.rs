@@ -10,19 +10,6 @@ use super::{BreezConfig, BreezError};
 #[cfg(feature = "breez")]
 use breez_sdk_liquid::prelude::{ConnectRequest, LiquidSdk};
 
-#[cfg(feature = "breez")]
-use bip39::Mnemonic;
-
-#[cfg(feature = "breez")]
-use liana::miniscript::bitcoin::bip32::{DerivationPath, Xpriv};
-
-#[cfg(feature = "breez")]
-use bitcoin::secp256k1::Secp256k1;
-
-/// Custom derivation path for Breez wallet from Liana's master seed
-/// m/1776'/0'/0' where 1776 is our custom purpose code for Lightning
-pub const BREEZ_DERIVATION_PATH: &str = "m/1776'/0'/0'";
-
 /// Breez wallet manager
 #[derive(Clone)]
 pub struct BreezWalletManager {
@@ -43,54 +30,13 @@ impl std::fmt::Debug for BreezWalletManager {
 }
 
 impl BreezWalletManager {
-    /// Derive Breez wallet seed from Liana's master mnemonic
-    #[cfg(feature = "breez")]
-    pub fn derive_breez_seed(
-        liana_mnemonic: &str,
-        network: bitcoin::Network,
-    ) -> Result<Vec<u8>, BreezError> {
-        // Parse Liana's mnemonic
-        let mnemonic = Mnemonic::parse(liana_mnemonic)
-            .map_err(|e| BreezError::InvalidMnemonic(e.to_string()))?;
-
-        // Generate seed from mnemonic (no passphrase)
-        let seed_bytes = mnemonic.to_seed("");
-
-        // Derive extended private key
-        let master_key = Xpriv::new_master(network, &seed_bytes)
-            .map_err(|e| BreezError::DerivationFailed(e.to_string()))?;
-
-        // Derive child key at custom path
-        let derivation_path: DerivationPath = BREEZ_DERIVATION_PATH
-            .parse()
-            .map_err(|e| BreezError::InvalidPath(format!("{:?}", e)))?;
-
-        let derived_key = master_key
-            .derive_priv(&Secp256k1::new(), &derivation_path)
-            .map_err(|e| BreezError::DerivationFailed(e.to_string()))?;
-
-        // Convert to seed bytes for Breez SDK
-        Ok(derived_key.private_key.secret_bytes().to_vec())
-    }
-
-    #[cfg(not(feature = "breez"))]
-    pub fn derive_breez_seed(
-        _liana_mnemonic: &str,
-        _network: bitcoin::Network,
-    ) -> Result<Vec<u8>, BreezError> {
-        Err(BreezError::NotInitialized)
-    }
-
-    /// Initialize Breez SDK with derived seed
+    /// Initialize Breez SDK with mnemonic
     #[cfg(feature = "breez")]
     pub async fn initialize(
         liana_mnemonic: &str,
         network: bitcoin::Network,
         data_dir: &Path,
     ) -> Result<Self, BreezError> {
-        // Derive seed
-        let _breez_seed = Self::derive_breez_seed(liana_mnemonic, network)?;
-
         // Create Breez SDK configuration
         let config = BreezConfig::new(
             network,
@@ -157,6 +103,21 @@ impl BreezWalletManager {
     #[cfg(not(feature = "breez"))]
     pub async fn disconnect(&mut self) -> Result<(), BreezError> {
         Ok(())
+    }
+
+    /// Create a placeholder manager (used during initialization)
+    #[cfg(feature = "breez")]
+    pub fn new_placeholder(network: bitcoin::Network) -> Self {
+        Self {
+            sdk: None,
+            network,
+            config: BreezConfig::new(network, String::new()),
+        }
+    }
+
+    #[cfg(not(feature = "breez"))]
+    pub fn new_placeholder(network: bitcoin::Network) -> Self {
+        Self { network }
     }
 }
 

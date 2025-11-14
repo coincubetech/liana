@@ -26,6 +26,10 @@ pub enum BreezError {
     // Event handling errors
     EventListenerFailed(String),
 
+    // Payment history errors
+    PaymentListFailed(String),
+    PaymentFetchFailed(String),
+
     // General errors
     SdkError(String),
 }
@@ -49,6 +53,8 @@ impl fmt::Display for BreezError {
             Self::LimitsFetchFailed(msg) => write!(f, "Failed to fetch payment limits: {}", msg),
             Self::BalanceFetchFailed(msg) => write!(f, "Failed to fetch balance: {}", msg),
             Self::EventListenerFailed(msg) => write!(f, "Failed to setup event listener: {}", msg),
+            Self::PaymentListFailed(msg) => write!(f, "Failed to list payments: {}", msg),
+            Self::PaymentFetchFailed(msg) => write!(f, "Failed to fetch payment: {}", msg),
             Self::SdkError(msg) => write!(f, "Breez SDK error: {}", msg),
         }
     }
