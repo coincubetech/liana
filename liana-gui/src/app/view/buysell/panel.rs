@@ -1,5 +1,5 @@
 use iced::{
-    widget::{container, pick_list, Space},
+    widget::{pick_list, Space},
     Alignment, Length, Task,
 };
 
@@ -48,7 +48,11 @@ pub enum BuySellFlowState {
     /// Nigeria, Kenya and South Africa, ie Mavapay supported countries
     Mavapay(super::flow_state::MavapayState),
     /// For Onramper countries, render an interface to generate a new address for buysell
-    AddressGeneration,
+    AddressGeneration {
+        buy_or_sell: Option<BuyOrSell>,
+        data_dir: crate::dir::LianaDirectory,
+        address: Option<LabelledAddress>,
+    },
     /// A webview is currently active, and is rendered instead of a buysell UI
     WebviewRenderer { active: iced_wry::IcedWebview },
 }
@@ -56,17 +60,12 @@ pub enum BuySellFlowState {
 pub struct BuySellPanel {
     // Runtime state - determines which flow is active
     pub flow_state: BuySellFlowState,
+    pub wallet: std::sync::Arc<crate::app::wallet::Wallet>,
     pub modal: app::state::vault::receive::Modal,
-    pub buy_or_sell: Option<BuyOrSell>,
 
     // Common fields (always present)
     pub error: Option<String>,
     pub network: Network,
-
-    // for address generation
-    pub wallet: std::sync::Arc<crate::app::wallet::Wallet>,
-    pub data_dir: crate::dir::LianaDirectory,
-    pub generated_address: Option<LabelledAddress>,
 
     // services used by several buysell providers
     pub geolocation_service: crate::services::geolocation::HttpGeoLocator,
@@ -79,15 +78,11 @@ impl BuySellPanel {
     pub fn new(
         network: bitcoin::Network,
         wallet: std::sync::Arc<crate::app::wallet::Wallet>,
-        data_dir: crate::dir::LianaDirectory,
     ) -> Self {
         Self {
-            buy_or_sell: None,
             error: None,
-            network,
             wallet,
-            data_dir,
-            generated_address: None,
+            network,
             modal: app::state::vault::receive::Modal::None,
             // Geolocation detection state
             geolocation_service: crate::services::geolocation::HttpGeoLocator::new(),
@@ -103,10 +98,19 @@ impl BuySellPanel {
     pub fn start_onramper_session(&mut self) -> iced::Task<BuySellMessage> {
         use crate::app::buysell::onramper;
 
-        let mode = match self.buy_or_sell {
-            None => return Task::none(),
+        let BuySellFlowState::AddressGeneration {
+            buy_or_sell,
+            address: generated_address,
+            ..
+        } = &self.flow_state
+        else {
+            unreachable!();
+        };
+
+        let mode = match buy_or_sell {
             Some(BuyOrSell::Buy) => "buy",
             Some(BuyOrSell::Sell) => "sell",
+            None => return iced::Task::none(),
         };
 
         let Some(iso_code) = self.detected_country_iso.as_ref() else {
@@ -125,10 +129,7 @@ impl BuySellPanel {
         };
 
         // prepare parameters
-        let address = self
-            .generated_address
-            .as_ref()
-            .map(|a| a.address.to_string());
+        let address = generated_address.as_ref().map(|a| a.address.to_string());
 
         match onramper::create_widget_url(&currency, address.as_deref(), &mode, self.network) {
             Ok(url) => Task::done(BuySellMessage::WebviewOpenUrl(url)),
@@ -171,7 +172,13 @@ impl BuySellPanel {
                 .push({
                     let element: iced::Element<ViewMessage, theme::Theme> = match &self.flow_state {
                         BuySellFlowState::DetectingLocation(m) => self.geolocation_ux(*m).into(),
-                        BuySellFlowState::AddressGeneration => self.address_generation_ux().into(),
+                        BuySellFlowState::AddressGeneration {
+                            buy_or_sell,
+                            address: generated_address,
+                            ..
+                        } => self
+                            .address_generation_ux(buy_or_sell.clone(), generated_address.clone())
+                            .into(),
                         BuySellFlowState::Mavapay(state) => {
                             let element: iced::Element<BuySellMessage, theme::Theme> =
                                 super::mavapay_ui::form(state).into();
@@ -239,7 +246,11 @@ impl BuySellPanel {
         ]
     }
 
-    fn address_generation_ux<'a>(&'a self) -> Column<'a, ViewMessage> {
+    fn address_generation_ux<'a>(
+        &'a self,
+        buy_or_sell: Option<BuyOrSell>,
+        generated: Option<LabelledAddress>,
+    ) -> Column<'a, ViewMessage> {
         use iced::widget::scrollable;
         use liana_ui::component::{
             button, card,
@@ -247,7 +258,7 @@ impl BuySellPanel {
         };
 
         let mut column = Column::new();
-        column = match self.generated_address.as_ref() {
+        column = match generated.as_ref() {
             Some(addr) => column
                 .push(text("Generated Address").size(14).color(color::GREY_3))
                 .push({
@@ -312,8 +323,6 @@ impl BuySellPanel {
                 ),
             None => column
                 .push({
-                    let buy_or_sell = self.buy_or_sell.clone();
-
                     Column::new()
                         .push(
                             button::secondary(
@@ -348,30 +357,24 @@ impl BuySellPanel {
                         .spacing(15)
                         .padding(5)
                 })
+                .push(
+                    iced::widget::container(Space::with_height(1))
+                        .style(|_| {
+                            iced::widget::container::background(iced::Background::Color(
+                                color::GREY_6,
+                            ))
+                        })
+                        .width(Length::Fill),
+                )
                 .push_maybe({
-                    self.buy_or_sell.is_some().then(|| {
-                        container(Space::with_height(1))
-                            .style(|_| {
-                                iced::widget::container::background(iced::Background::Color(
-                                    color::GREY_6,
-                                ))
-                            })
-                            .width(Length::Fill)
-                    })
-                })
-                .push_maybe({
-                    (matches!(self.buy_or_sell, Some(BuyOrSell::Buy))).then(|| {
+                    (matches!(buy_or_sell, Some(BuyOrSell::Buy))).then(|| {
                         button::secondary(Some(plus_icon()), "Generate New Address")
-                            .on_press_maybe(
-                                matches!(self.buy_or_sell, Some(BuyOrSell::Buy)).then_some(
-                                    ViewMessage::BuySell(BuySellMessage::CreateNewAddress),
-                                ),
-                            )
+                            .on_press(ViewMessage::BuySell(BuySellMessage::CreateNewAddress))
                             .width(iced::Length::Fill)
                     })
                 })
                 .push_maybe({
-                    (matches!(self.buy_or_sell, Some(BuyOrSell::Sell))).then(|| {
+                    (matches!(buy_or_sell, Some(BuyOrSell::Sell))).then(|| {
                         button::secondary(Some(globe_icon()), "Continue")
                             .on_press_maybe(self.detected_country_iso.is_some().then_some(
                                 ViewMessage::BuySell(BuySellMessage::StartOnramperSession),

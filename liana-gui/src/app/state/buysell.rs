@@ -42,35 +42,37 @@ impl State for BuySellPanel {
         cache: &Cache,
         message: Message,
     ) -> Task<Message> {
-        match &message {
+        let message = match message {
             // modal for any generated address
             Message::View(ViewMessage::Select(_)) => {
-                let Some(la) = &self.generated_address else {
-                    return Task::none();
+                if let BuySellFlowState::AddressGeneration {
+                    address: Some(la), ..
+                } = &self.flow_state
+                {
+                    self.modal = super::vault::receive::Modal::VerifyAddress(
+                        super::vault::receive::VerifyAddressModal::new(
+                            cache.datadir_path.clone(),
+                            self.wallet.clone(),
+                            cache.network,
+                            la.address.clone(),
+                            la.index,
+                        ),
+                    );
                 };
-
-                self.modal = super::vault::receive::Modal::VerifyAddress(
-                    super::vault::receive::VerifyAddressModal::new(
-                        self.data_dir.clone(),
-                        self.wallet.clone(),
-                        cache.network,
-                        la.address.clone(),
-                        la.index,
-                    ),
-                );
 
                 return Task::none();
             }
             Message::View(ViewMessage::ShowQrCode(_)) => {
-                let Some(la) = &self.generated_address else {
-                    return Task::none();
-                };
-
-                if let Some(modal) =
-                    super::vault::receive::ShowQrCodeModal::new(&la.address, la.index)
+                if let BuySellFlowState::AddressGeneration {
+                    address: Some(la), ..
+                } = &self.flow_state
                 {
-                    self.modal = super::vault::receive::Modal::ShowQrCode(modal);
-                }
+                    if let Some(modal) =
+                        super::vault::receive::ShowQrCodeModal::new(&la.address, la.index)
+                    {
+                        self.modal = super::vault::receive::Modal::ShowQrCode(modal);
+                    }
+                };
 
                 return Task::none();
             }
@@ -78,30 +80,33 @@ impl State for BuySellPanel {
                 self.modal = super::vault::receive::Modal::None;
                 return Task::none();
             }
-            _ => (),
-        }
-
-        let Message::View(ViewMessage::BuySell(message)) = message else {
-            return Task::none();
+            Message::View(ViewMessage::BuySell(message)) => message,
+            _ => return Task::none(),
         };
 
         match message {
             // internal state management
-            BuySellMessage::SetBuyOrSell(bs) => {
-                self.buy_or_sell = Some(bs);
-            }
             BuySellMessage::ResetWidget => {
                 let flow_state = match self.detected_country_iso.as_deref() {
                     Some(iso) if mavapay_supported(&iso) => {
                         BuySellFlowState::Mavapay(view::buysell::MavapayState::new())
                     }
-                    _ => BuySellFlowState::AddressGeneration,
+                    _ => BuySellFlowState::AddressGeneration {
+                        buy_or_sell: None,
+                        data_dir: cache.datadir_path.clone(),
+                        address: None,
+                    },
                 };
 
                 self.flow_state = flow_state;
-                self.buy_or_sell = None;
                 self.error = None;
-                self.generated_address = None;
+            }
+            BuySellMessage::SetBuyOrSell(bs) => {
+                if let BuySellFlowState::AddressGeneration { buy_or_sell, .. } =
+                    &mut self.flow_state
+                {
+                    *buy_or_sell = Some(bs);
+                }
             }
 
             // creates a new address for bitcoin reception
@@ -122,7 +127,15 @@ impl State for BuySellPanel {
                     },
                 )
             }
-            BuySellMessage::AddressCreated(addresses) => self.generated_address = Some(addresses),
+            BuySellMessage::AddressCreated(addresses) => {
+                if let BuySellFlowState::AddressGeneration {
+                    address: generated_address,
+                    ..
+                } = &mut self.flow_state
+                {
+                    *generated_address = Some(addresses);
+                }
+            }
 
             // ip-geolocation logic
             BuySellMessage::CountryDetected(result) => {
@@ -159,16 +172,20 @@ impl State for BuySellPanel {
                     }
                 };
 
-                // update location information
-                tracing::info!("country = {}, iso_code = {}", country_name, iso_code);
-                self.detected_country_name = Some(country_name);
-                self.detected_country_iso = Some(iso_code.clone());
-
                 if mavapay_supported(&iso_code) {
                     self.flow_state = BuySellFlowState::Mavapay(MavapayState::new());
                 } else {
-                    self.flow_state = BuySellFlowState::AddressGeneration;
+                    self.flow_state = BuySellFlowState::AddressGeneration {
+                        buy_or_sell: None,
+                        data_dir: cache.datadir_path.clone(),
+                        address: None,
+                    };
                 }
+
+                // update location information
+                tracing::info!("Country = {}, ISO = {}", country_name, iso_code);
+                self.detected_country_name = Some(country_name);
+                self.detected_country_iso = Some(iso_code);
             }
             BuySellMessage::ManualCountrySelected(country) => {
                 self.error = None;
@@ -234,13 +251,13 @@ impl State for BuySellPanel {
                             }
 
                             // initialize location information for user
-                            let iso = self.detected_country_iso.clone().unwrap();
-                            let source_currency = match iso.as_str() {
-                                "NG" => Some(MavapayUnitCurrency::NigerianNairaKobo),
-                                "KE" => Some(MavapayUnitCurrency::KenyanShillingCent),
-                                "ZA" => Some(MavapayUnitCurrency::SouthAfricanRandCent),
+                            let iso = self.detected_country_iso.as_deref();
+                            let source_currency = match iso {
+                                Some("NG") => Some(MavapayUnitCurrency::NigerianNairaKobo),
+                                Some("KE") => Some(MavapayUnitCurrency::KenyanShillingCent),
+                                Some("ZA") => Some(MavapayUnitCurrency::SouthAfricanRandCent),
                                 c => {
-                                    log::error!("Country: {} is not supported by mavapay", c);
+                                    log::error!("Country: {:?} is not supported by mavapay", c);
                                     None
                                 }
                             };

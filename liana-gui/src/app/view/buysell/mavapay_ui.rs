@@ -66,41 +66,34 @@ fn registration_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> 
         unreachable!();
     };
 
-    // Top bar with previous
-    let top_bar = Row::new()
-        .push(
-            Button::new(
-                Row::new()
-                    .push(previous_icon().color(color::GREY_2))
-                    .push(Space::with_width(Length::Fixed(5.0)))
-                    .push(text("Previous").color(color::GREY_2))
-                    .spacing(5)
-                    .align_y(Alignment::Center),
-            )
-            .style(|_, _| iced::widget::button::Style {
-                background: None,
-                text_color: color::GREY_2,
-                border: iced::Border::default(),
-                shadow: iced::Shadow::default(),
-            })
-            .on_press(BuySellMessage::ResetWidget),
+    iced::widget::column![
+        // Top bar with previous
+        Button::new(
+            Row::new()
+                .push(previous_icon().color(color::GREY_2))
+                .push(Space::with_width(Length::Fixed(5.0)))
+                .push(text("Previous").color(color::GREY_2))
+                .spacing(5)
+                .align_y(Alignment::Center),
         )
-        .align_y(Alignment::Center);
-
-    // Title and subtitle
-    let title = Column::new()
-            .push(text::h3("Create an Account").color(color::WHITE))
-            .push(
-                text::p2_regular(
-                    "Get started with your personal Bitcoin wallet. Buy, store, and manage crypto securely, all in one place.",
-                )
-                .color(color::GREY_3),
-            )
-            .spacing(10)
-            .align_x(Alignment::Center);
-
-    let name_row = Row::new()
-        .push(
+        .style(|_, _| iced::widget::button::Style {
+            background: None,
+            text_color: color::GREY_2,
+            border: iced::Border::default(),
+            shadow: iced::Shadow::default(),
+        })
+        .on_press(BuySellMessage::ResetWidget),
+        Space::with_height(Length::Fixed(10.0)),
+        // Title and subtitle
+        iced::widget::column![
+            text::h3("Create an Account").color(color::WHITE),
+            text::p2_regular("Get started with your personal Bitcoin wallet. Buy, store, and manage crypto securely, all in one place.").color(color::GREY_3)
+        ]
+        .spacing(10)
+        .align_x(Alignment::Center),
+        Space::with_height(Length::Fixed(20.0)),
+        // Name Inputs
+        iced::widget::row![
             Container::new(
                 form::Form::new("First Name", first_name, |v| {
                     BuySellMessage::Mavapay(MavapayMessage::FirstNameChanged(v))
@@ -109,9 +102,7 @@ fn registration_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> 
                 .padding(15),
             )
             .width(Length::FillPortion(1)),
-        )
-        .push(Space::with_width(Length::Fixed(12.0)))
-        .push(
+            Space::with_width(Length::Fixed(12.0)),
             Container::new(
                 form::Form::new("Last Name", last_name, |v| {
                     BuySellMessage::Mavapay(MavapayMessage::LastNameChanged(v))
@@ -119,54 +110,41 @@ fn registration_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> 
                 .size(16)
                 .padding(15),
             )
-            .width(Length::FillPortion(1)),
-        );
-
-    let email = form::Form::new("Email Address", email, |v| {
-        BuySellMessage::Mavapay(MavapayMessage::EmailChanged(v))
-    })
-    .size(16)
-    .padding(15);
-
-    let password = form::Form::new("Password", password1, |v| {
-        BuySellMessage::Mavapay(MavapayMessage::Password1Changed(v))
-    })
-    .size(16)
-    .padding(15)
-    .secure();
-
-    let confirm = form::Form::new("Confirm Password", password2, |v| {
-        BuySellMessage::Mavapay(MavapayMessage::Password2Changed(v))
-    })
-    .size(16)
-    .padding(15)
-    .secure();
-
-    let create_btn = button::primary(None, "Create Account")
-        .on_press_maybe(
-            {
-                // TODO: implement form validation here
-                // use https://github.com/shssoichiro/zxcvbn-rs for password strength validation
-                false
-            }
-            .then_some(BuySellMessage::Mavapay(MavapayMessage::SubmitRegistration)),
-        )
-        .width(Length::Fill);
-
-    iced::widget::column![
-        top_bar,
+            .width(Length::FillPortion(1))
+        ],
         Space::with_height(Length::Fixed(10.0)),
-        title,
-        Space::with_height(Length::Fixed(20.0)),
-        name_row,
+        // Email Input
+        form::Form::new("Email Address", email, |v| {
+            BuySellMessage::Mavapay(MavapayMessage::EmailChanged(v))
+        })
+        .size(16)
+        .padding(15),
         Space::with_height(Length::Fixed(10.0)),
-        email,
-        Space::with_height(Length::Fixed(10.0)),
-        password,
+        // Password Inputs
+        form::Form::new("Password", password1, |v| {
+            BuySellMessage::Mavapay(MavapayMessage::Password1Changed(v))
+        })
+        .size(16)
+        .padding(15)
+        .secure(),
         // TODO: include password check messages
-        confirm,
+        form::Form::new("Confirm Password", password2, |v| {
+            BuySellMessage::Mavapay(MavapayMessage::Password2Changed(v))
+        })
+        .size(16)
+        .padding(15)
+        .secure(),
         Space::with_height(Length::Fixed(20.0)),
-        create_btn,
+        button::primary(None, "Create Account")
+            .on_press_maybe(
+                {
+                    // TODO: implement form validation here
+                    // use https://github.com/shssoichiro/zxcvbn-rs for password strength validation
+                    false
+                }
+                .then_some(BuySellMessage::Mavapay(MavapayMessage::SubmitRegistration)),
+            )
+            .width(Length::Fill),
     ]
     .align_x(Alignment::Center)
     .spacing(5)
