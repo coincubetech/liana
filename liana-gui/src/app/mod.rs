@@ -167,7 +167,6 @@ impl Panels {
             buy_sell: Some(crate::app::view::buysell::BuySellPanel::new(
                 cache.network,
                 wallet,
-                data_dir,
             )),
         }
     }
@@ -222,7 +221,6 @@ impl Panels {
             self.buy_sell = Some(crate::app::view::buysell::BuySellPanel::new(
                 cache.network,
                 wallet,
-                data_dir,
             ));
         }
     }
