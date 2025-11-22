@@ -200,9 +200,56 @@ impl State for BuySellPanel {
 
             // session management
             BuySellMessage::StartOnramperSession => {
-                return self
-                    .start_onramper_session()
-                    .map(|m| Message::View(ViewMessage::BuySell(m)));
+                return {
+                    let BuySellFlowState::AddressGeneration {
+                        buy_or_sell,
+                        address: generated_address,
+                        ..
+                    } = &self.flow_state
+                    else {
+                        return Task::none();
+                    };
+
+                    let mode = match buy_or_sell {
+                        Some(view::buysell::panel::BuyOrSell::Buy) => "buy",
+                        Some(view::buysell::panel::BuyOrSell::Sell) => "sell",
+                        None => return Task::none(),
+                    };
+
+                    let Some(iso_code) = self.detected_country_iso.as_ref() else {
+                        tracing::warn!(
+                            "Unable to start session, country selection|detection was unsuccessful"
+                        );
+                        return Task::none();
+                    };
+
+                    // This method is now only called for Onramper (non-Mavapay) flow
+                    let Some(currency) = crate::services::geolocation::get_countries()
+                        .iter()
+                        .find(|c| c.code == iso_code)
+                        .map(|c| c.currency.name)
+                    else {
+                        tracing::error!("Unknown country iso code: {}", iso_code);
+                        return Task::none();
+                    };
+
+                    // prepare parameters
+                    let address = generated_address.as_ref().map(|a| a.address.to_string());
+
+                    match crate::app::buysell::onramper::create_widget_url(
+                        &currency,
+                        address.as_deref(),
+                        &mode,
+                        self.network,
+                    ) {
+                        Ok(url) => Task::done(BuySellMessage::WebviewOpenUrl(url)),
+                        Err(error) => {
+                            tracing::error!("[ONRAMPER] Error: {}", error);
+                            Task::done(BuySellMessage::SessionError(error.to_string()))
+                        }
+                    }
+                }
+                .map(|m| Message::View(ViewMessage::BuySell(m)));
             }
             BuySellMessage::SessionError(error) => {
                 self.error = Some(error);

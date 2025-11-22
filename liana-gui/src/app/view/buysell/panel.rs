@@ -1,6 +1,6 @@
 use iced::{
     widget::{pick_list, Space},
-    Alignment, Length, Task,
+    Alignment, Length,
 };
 
 use liana::miniscript::bitcoin::{self, Network};
@@ -91,52 +91,6 @@ impl BuySellPanel {
             webview_manager: iced_wry::IcedWebviewManager::new(),
             // Start in detecting location state
             flow_state: BuySellFlowState::DetectingLocation(false),
-        }
-    }
-
-    /// Opens Onramper widget session (only called for non-Mavapay countries)
-    pub fn start_onramper_session(&mut self) -> iced::Task<BuySellMessage> {
-        use crate::app::buysell::onramper;
-
-        let BuySellFlowState::AddressGeneration {
-            buy_or_sell,
-            address: generated_address,
-            ..
-        } = &self.flow_state
-        else {
-            unreachable!();
-        };
-
-        let mode = match buy_or_sell {
-            Some(BuyOrSell::Buy) => "buy",
-            Some(BuyOrSell::Sell) => "sell",
-            None => return iced::Task::none(),
-        };
-
-        let Some(iso_code) = self.detected_country_iso.as_ref() else {
-            tracing::warn!("Unable to start session, country selection|detection was unsuccessful");
-            return Task::none();
-        };
-
-        // This method is now only called for Onramper (non-Mavapay) flow
-        let Some(currency) = crate::services::geolocation::get_countries()
-            .iter()
-            .find(|c| c.code == iso_code)
-            .map(|c| c.currency.name)
-        else {
-            tracing::error!("Unknown country iso code: {}", iso_code);
-            return Task::none();
-        };
-
-        // prepare parameters
-        let address = generated_address.as_ref().map(|a| a.address.to_string());
-
-        match onramper::create_widget_url(&currency, address.as_deref(), &mode, self.network) {
-            Ok(url) => Task::done(BuySellMessage::WebviewOpenUrl(url)),
-            Err(error) => {
-                tracing::error!("[ONRAMPER] Error: {}", error);
-                Task::done(BuySellMessage::SessionError(error.to_string()))
-            }
         }
     }
 

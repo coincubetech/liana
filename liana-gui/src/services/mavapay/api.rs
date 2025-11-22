@@ -271,7 +271,6 @@ pub struct MavapayWallet {
     pub balance: u64,
 }
 
-// TODO: is this correct?
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PaymentLinkType {
     #[serde(rename = "One_Time")]
