@@ -72,6 +72,10 @@ toml = "0.9"
 chrono = "0.4.38"
 uuid = { version = "1.10", features = ["v4", "serde"] }
 argon2 = { version = "0.5", features = ["std"] }
+aes-gcm = "0.10"
+zeroize = "1.6"
+rpassword = "7.2"
+rand = "0.9.2"
 
 # Used for managing internal bitcoind
 base64 = "0.22"
