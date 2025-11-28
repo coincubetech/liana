@@ -47,8 +47,8 @@ pub enum BuySellFlowState {
     DetectingLocation(bool),
     /// Nigeria, Kenya and South Africa, ie Mavapay supported countries
     Mavapay(super::flow_state::MavapayState),
-    /// Renders an interface to generate a new address for bitcoin deposit
-    AddressGeneration {
+    /// Renders an interface to either generate a new address for bitcoin deposit, or skip to selling BTC
+    Initialization {
         buy_or_sell: Option<bool>,
         data_dir: crate::dir::LianaDirectory,
     },
@@ -125,12 +125,12 @@ impl BuySellPanel {
                 .push({
                     let element: iced::Element<ViewMessage, theme::Theme> = match &self.flow_state {
                         BuySellFlowState::DetectingLocation(m) => self.geolocation_ux(*m).into(),
-                        BuySellFlowState::AddressGeneration { buy_or_sell, .. } => {
+                        BuySellFlowState::Initialization { buy_or_sell, .. } => {
                             match self.buy_or_sell.as_ref() {
                                 Some(BuyOrSell::Buy { address }) => {
-                                    self.address_generation_ux(*buy_or_sell, Some(&address))
+                                    self.initialization_ux(*buy_or_sell, Some(&address))
                                 }
-                                _ => self.address_generation_ux(*buy_or_sell, None),
+                                _ => self.initialization_ux(*buy_or_sell, None),
                             }
                             .into()
                         }
@@ -201,7 +201,7 @@ impl BuySellPanel {
         ]
     }
 
-    fn address_generation_ux<'a>(
+    fn initialization_ux<'a>(
         &'a self,
         buy_or_sell: Option<bool>,
         generated: Option<&'a LabelledAddress>,

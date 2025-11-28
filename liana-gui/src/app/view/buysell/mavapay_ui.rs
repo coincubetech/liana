@@ -5,7 +5,7 @@ use crate::app::view::{
 
 use iced::{widget::*, Alignment, Length};
 
-use liana_ui::component::{button, form, text};
+use liana_ui::component::{button, text};
 use liana_ui::{color, theme, widget::Column};
 
 pub fn form<'a>(
@@ -105,7 +105,7 @@ fn registration_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> 
         // Name Inputs
         iced::widget::row![
             Container::new(
-                form::Form::new("First Name", first_name, |v| {
+                text_input("First Name", first_name).on_input(|v| {
                     BuySellMessage::Mavapay(MavapayMessage::FirstNameChanged(v))
                 })
                 .size(16)
@@ -114,7 +114,7 @@ fn registration_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> 
             .width(Length::FillPortion(1)),
             Space::with_width(Length::Fixed(12.0)),
             Container::new(
-                form::Form::new("Last Name", last_name, |v| {
+                text_input("Last Name", last_name).on_input(|v| {
                     BuySellMessage::Mavapay(MavapayMessage::LastNameChanged(v))
                 })
                 .size(16)
@@ -124,26 +124,26 @@ fn registration_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> 
         ],
         Space::with_height(Length::Fixed(10.0)),
         // Email Input
-        form::Form::new("Email Address", email, |v| {
+        text_input("Email Address", email).on_input(|v| {
             BuySellMessage::Mavapay(MavapayMessage::EmailChanged(v))
         })
         .size(16)
         .padding(15),
         Space::with_height(Length::Fixed(10.0)),
         // Password Inputs
-        form::Form::new("Password", password1, |v| {
+        text_input("Password", password1).on_input(|v| {
             BuySellMessage::Mavapay(MavapayMessage::Password1Changed(v))
         })
         .size(16)
         .padding(15)
-        .secure(),
+        .secure(true),
         // TODO: include password check messages
-        form::Form::new("Confirm Password", password2, |v| {
+        text_input("Confirm Password", password2).on_input(|v| {
             BuySellMessage::Mavapay(MavapayMessage::Password2Changed(v))
         })
         .size(16)
         .padding(15)
-        .secure(),
+        .secure(true),
         Space::with_height(Length::Fixed(20.0)),
         button::primary(None, "Create Account")
             .on_press_maybe(

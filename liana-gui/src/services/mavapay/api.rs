@@ -208,7 +208,7 @@ pub enum KenyanBeneficiary {
     },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all_fields = "camelCase")]
 #[serde(untagged)]
 pub enum MavapayBanks {
@@ -216,7 +216,7 @@ pub enum MavapayBanks {
     SouthAfrican(Vec<String>),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct NigerianBank {
     pub bank_name: String,
@@ -284,44 +284,6 @@ pub struct MavapayWallet {
     pub account_id: String,
     pub currency: MavapayCurrency,
     pub balance: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum PaymentLinkType {
-    #[serde(rename = "One_Time")]
-    OneTime,
-    #[serde(rename = "Recurring")]
-    Recurring,
-}
-
-/// Based on actual API spec from Postman collection
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreatePaymentLinkRequest {
-    #[serde(rename = "type")]
-    pub _type: PaymentLinkType,
-    pub name: String,
-    pub description: String,
-    pub add_fee_to_total_cost: bool,
-    pub settlement_currency: MavapayCurrency,
-    pub payment_methods: [MavapayPaymentMethod; 1],
-    pub amount: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub callback_url: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreatePaymentLinkResponse {
-    pub payment_link: String,
-    pub payment_ref: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BankInformation {
-    pub bank_name: String,
-    pub nip_bank_code: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

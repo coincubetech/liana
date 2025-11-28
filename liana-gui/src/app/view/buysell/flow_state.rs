@@ -1,5 +1,4 @@
 use iced::Task;
-use liana_ui::component::form;
 
 use crate::app::view::{BuySellMessage, MavapayMessage};
 use crate::services::{coincube::*, mavapay::*};
@@ -8,11 +7,11 @@ use crate::services::{coincube::*, mavapay::*};
 pub enum MavapayFlowStep {
     Register {
         // TODO: change to normal strings
-        first_name: form::Value<String>,
-        last_name: form::Value<String>,
-        password1: form::Value<String>,
-        password2: form::Value<String>,
-        email: form::Value<String>,
+        first_name: String,
+        last_name: String,
+        password1: String,
+        password2: String,
+        email: String,
     },
     VerifyEmail {
         email: String,
@@ -35,17 +34,13 @@ pub enum MavapayFlowStep {
     },
 }
 
-/// State specific to Mavapay flow
 pub struct MavapayState {
     pub step: MavapayFlowStep,
+    pub mavapay_client: MavapayClient,
 
     // mavapay session information
     pub current_user: Option<User>,
     pub auth_token: Option<String>,
-
-    // API clients
-    pub mavapay_client: MavapayClient,
-    pub coincube_client: CoincubeClient,
 }
 
 impl MavapayState {
@@ -55,10 +50,10 @@ impl MavapayState {
                 email: String::new(),
                 password: String::new(),
             },
+            mavapay_client: MavapayClient::new(),
+
             current_user: None,
             auth_token: None,
-            mavapay_client: MavapayClient::new(),
-            coincube_client: crate::services::coincube::CoincubeClient::new(),
         }
     }
 }
@@ -82,7 +77,11 @@ impl MavapayState {
         )
     }
 
-    pub fn create_quote(&self, buy_or_sell: &super::panel::BuyOrSell) -> Task<BuySellMessage> {
+    pub fn create_quote(
+        &self,
+        buy_or_sell: &super::panel::BuyOrSell,
+        coincube_client: CoincubeClient,
+    ) -> Task<BuySellMessage> {
         let MavapayFlowStep::ActiveBuysell {
             country,
             amount,
@@ -105,7 +104,7 @@ impl MavapayState {
                 amount: amount.clone(),
                 source_currency: MavapayUnitCurrency::BitcoinSatoshi,
                 target_currency: local_currency,
-                // TODO: Is direct onchain supported as a payment method? If no, then this is blocked by the breeze-sdk integration task
+                // TODO: Mavapay only supports lightning transactions for selling BTC, meaning we are blocked by the breeze integration
                 payment_method: MavapayPaymentMethod::Lightning,
                 payment_currency: MavapayUnitCurrency::BitcoinSatoshi,
                 // automatically deposit fiat funds in beneficiary account
@@ -120,32 +119,28 @@ impl MavapayState {
                 payment_method: MavapayPaymentMethod::BankTransfer,
                 payment_currency: MavapayUnitCurrency::BitcoinSatoshi,
                 autopayout: true,
+                customer_internal_fee: None,
                 beneficiary: Some(Beneficiary::Onchain {
                     on_chain_address: address.address.to_string(),
                 }),
-                customer_internal_fee: None,
             },
         };
 
         // prepare request
         let client = self.mavapay_client.clone();
-        let coincube_client = self.coincube_client.clone();
 
         Task::perform(
-            async move {
-                // Step 1: Create quote with Mavapay
-                let quote = client.create_quote(request).await?;
-                tracing::info!("[MAVAPAY] Quote created: {}", quote.id);
+            // Step 1: Create quote with Mavapay
+            async move { client.create_quote(request).await },
+            move |result: Result<GetQuoteResponse, MavapayError>| match result {
+                Ok(quote) => {
+                    // TODO: Save quote to coincube-api (Step 2)
 
-                // TODO: Save quote to coincube-api (Step 2)
+                    tracing::info!("[MAVAPAY] Quote created: {}", quote.id);
 
-                // Step 3: Build quote display URL using quote_id
-                let url = coincube_client.get_quote_display_url(&quote.id);
-
-                Ok((quote, url))
-            },
-            |result: Result<(GetQuoteResponse, String), MavapayError>| match result {
-                Ok((_, url)) => BuySellMessage::WebviewOpenUrl(url),
+                    // Step 3: Build quote display URL using quote_id
+                    BuySellMessage::WebviewOpenUrl(coincube_client.get_quote_display_url(&quote.id))
+                }
                 Err(e) => BuySellMessage::SessionError(e.to_string()),
             },
         )

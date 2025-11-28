@@ -79,7 +79,7 @@ impl State for BuySellPanel {
                     Some(iso) if mavapay_supported(&iso) => {
                         BuySellFlowState::Mavapay(view::buysell::MavapayState::new())
                     }
-                    _ => BuySellFlowState::AddressGeneration {
+                    _ => BuySellFlowState::Initialization {
                         buy_or_sell: None,
                         data_dir: cache.datadir_path.clone(),
                     },
@@ -91,9 +91,7 @@ impl State for BuySellPanel {
 
             // creates a new address for bitcoin deposit
             BuySellMessage::SetBuyOrSell(bs) => {
-                if let BuySellFlowState::AddressGeneration { buy_or_sell, .. } =
-                    &mut self.flow_state
-                {
+                if let BuySellFlowState::Initialization { buy_or_sell, .. } = &mut self.flow_state {
                     *buy_or_sell = Some(bs)
                 }
             }
@@ -120,8 +118,6 @@ impl State for BuySellPanel {
 
             // ip-geolocation logic
             BuySellMessage::CountryDetected(result) => {
-                use crate::app::view::buysell::MavapayState;
-
                 let country = match result {
                     Ok(country) => {
                         self.error = None;
@@ -139,7 +135,28 @@ impl State for BuySellPanel {
                     }
                 };
 
+                // update location information
+                tracing::info!("Country = {}, ISO = {}", country.name, country.code);
+                self.detected_country = Some(country.clone());
+
+                self.flow_state = BuySellFlowState::Initialization {
+                    buy_or_sell: None,
+                    data_dir: cache.datadir_path.clone(),
+                };
+            }
+
+            // session management
+            BuySellMessage::StartSession => {
+                let Some(country) = self.detected_country.as_ref() else {
+                    tracing::warn!(
+                        "Unable to start session, country selection|detection was unsuccessful"
+                    );
+
+                    return Task::none();
+                };
+
                 if mavapay_supported(&country.code) {
+                    // start buysell under Mavapay
                     let mut mavapay = MavapayState::new();
 
                     // attempt automatic login from os-keyring
@@ -155,7 +172,7 @@ impl State for BuySellPanel {
 
                         if mavapay.current_user.is_some() && mavapay.auth_token.is_some() {
                             // TODO: check if auth credentials have expired
-                            log::info!("Coincube session successfully restored from OS keyring");
+                            log::info!("Mavapay session successfully restored from OS keyring");
 
                             mavapay.step = MavapayFlowStep::ActiveBuysell {
                                 country: country.clone(),
@@ -166,73 +183,55 @@ impl State for BuySellPanel {
                                 current_quote: None,
                                 current_price: None,
                             };
+
+                            // TODO: only get banks from API if the user is successfully logged in and not from Kenya (Kenyan payments are done over mobile money)
+                            // TODO: always fetch most recent price for BTC
                         };
                     };
 
                     self.flow_state = BuySellFlowState::Mavapay(mavapay);
                 } else {
-                    self.flow_state = BuySellFlowState::AddressGeneration {
-                        buy_or_sell: None,
-                        data_dir: cache.datadir_path.clone(),
+                    // start buysell under Onramper
+                    let Some(currency) = crate::services::coincube::get_countries()
+                        .iter()
+                        .find(|c| c.code == country.code)
+                        .map(|c| c.currency.code)
+                    else {
+                        tracing::error!("Unknown country iso code: {}", country.code);
+                        return Task::none();
                     };
+
+                    // create onramper widget url and start session
+                    let url = match &self.buy_or_sell {
+                        Some(view::buysell::panel::BuyOrSell::Buy { address }) => {
+                            let address = address.address.to_string();
+                            crate::app::buysell::onramper::create_widget_url(
+                                &currency,
+                                Some(&address),
+                                "buy",
+                                self.network,
+                            )
+                        }
+                        Some(view::buysell::panel::BuyOrSell::Sell) => {
+                            crate::app::buysell::onramper::create_widget_url(
+                                &currency,
+                                None,
+                                "sell",
+                                self.network,
+                            )
+                        }
+                        None => return Task::none(),
+                    };
+
+                    return match url {
+                        Ok(url) => Task::done(BuySellMessage::WebviewOpenUrl(url)),
+                        Err(error) => {
+                            tracing::error!("[ONRAMPER] Error: {}", error);
+                            Task::done(BuySellMessage::SessionError(error.to_string()))
+                        }
+                    }
+                    .map(|m| Message::View(ViewMessage::BuySell(m)));
                 }
-
-                // update location information
-                tracing::info!("Country = {}, ISO = {}", country.name, country.code);
-                self.detected_country = Some(country);
-
-                // TODO: get banks for mavapay state
-                if matches!(&self.flow_state, BuySellFlowState::Mavapay(..)) {}
-            }
-
-            // session management
-            BuySellMessage::StartSession => {
-                let Some(iso_code) = self.detected_country.as_ref().map(|c| c.code) else {
-                    tracing::warn!(
-                        "Unable to start session, country selection|detection was unsuccessful"
-                    );
-                    return Task::none();
-                };
-
-                let Some(currency) = crate::services::coincube::get_countries()
-                    .iter()
-                    .find(|c| c.code == iso_code)
-                    .map(|c| c.currency.code)
-                else {
-                    tracing::error!("Unknown country iso code: {}", iso_code);
-                    return Task::none();
-                };
-
-                // create onramper widget url and start session
-                let url = match &self.buy_or_sell {
-                    Some(view::buysell::panel::BuyOrSell::Buy { address }) => {
-                        let address = address.address.to_string();
-                        crate::app::buysell::onramper::create_widget_url(
-                            &currency,
-                            Some(&address),
-                            "buy",
-                            self.network,
-                        )
-                    }
-                    Some(view::buysell::panel::BuyOrSell::Sell) => {
-                        crate::app::buysell::onramper::create_widget_url(
-                            &currency,
-                            None,
-                            "sell",
-                            self.network,
-                        )
-                    }
-                    None => return Task::none(),
-                };
-
-                return match url {
-                    Ok(url) => Task::done(BuySellMessage::WebviewOpenUrl(url)),
-                    Err(error) => {
-                        tracing::error!("[ONRAMPER] Error: {}", error);
-                        Task::done(BuySellMessage::SessionError(error.to_string()))
-                    }
-                }
-                .map(|m| Message::View(ViewMessage::BuySell(m)));
             }
             BuySellMessage::SessionError(error) => {
                 self.error = Some(error);
@@ -252,7 +251,7 @@ impl State for BuySellPanel {
                                 skip_email_verification,
                             },
                         ) => {
-                            let client = mavapay.coincube_client.clone();
+                            let client = self.coincube_client.clone();
 
                             let email = email.to_string();
                             let password = password.to_string();
@@ -331,24 +330,11 @@ impl State for BuySellPanel {
                                 }
                             };
 
-                            // persist user state
-                            mavapay.current_user = Some(login.user);
-                            mavapay.auth_token = Some(login.token);
-
-                            mavapay.step = MavapayFlowStep::ActiveBuysell {
-                                country: self.detected_country.clone().unwrap(),
-                                banks: None,
-                                amount: 60,
-                                beneficiary: None,
-                                selected_bank: None,
-                                current_quote: None,
-                                current_price: None,
+                            // go into initialization
+                            self.flow_state = BuySellFlowState::Initialization {
+                                buy_or_sell: None,
+                                data_dir: cache.datadir_path.clone(),
                             };
-
-                            // Automatically get current price when entering dashboard
-                            return Task::done(Message::View(ViewMessage::BuySell(
-                                BuySellMessage::Mavapay(MavapayMessage::GetPrice),
-                            )));
                         }
                         // user registration form
                         (
@@ -361,32 +347,23 @@ impl State for BuySellPanel {
                             },
                             msg,
                         ) => match msg {
-                            MavapayMessage::FirstNameChanged(name) => {
-                                first_name.value = name;
-                            }
-                            MavapayMessage::LastNameChanged(name) => {
-                                last_name.value = name;
-                            }
-                            MavapayMessage::EmailChanged(name) => {
-                                email.value = name;
-                            }
-                            MavapayMessage::Password1Changed(name) => {
-                                password1.value = name;
-                            }
-                            MavapayMessage::Password2Changed(name) => {
-                                password2.value = name;
-                            }
+                            MavapayMessage::FirstNameChanged(n) => *first_name = n,
+                            MavapayMessage::LastNameChanged(n) => *last_name = n,
+                            MavapayMessage::EmailChanged(e) => *email = e,
+                            MavapayMessage::Password1Changed(p) => *password1 = p,
+                            MavapayMessage::Password2Changed(p) => *password2 = p,
+
                             MavapayMessage::SubmitRegistration => {
-                                let client = mavapay.coincube_client.clone();
+                                let client = self.coincube_client.clone();
                                 let request = crate::services::coincube::SignUpRequest {
                                     account_type:
                                         crate::services::coincube::AccountType::Individual,
-                                    email: email.value.clone(),
-                                    first_name: first_name.value.clone(),
-                                    last_name: last_name.value.clone(),
+                                    email: email.clone(),
+                                    first_name: first_name.clone(),
+                                    last_name: last_name.clone(),
                                     auth_details: [crate::services::coincube::AuthDetail {
                                         provider: 1, // EmailProvider = 1
-                                        password: password1.value.clone(),
+                                        password: password1.clone(),
                                     }],
                                 };
 
@@ -407,8 +384,8 @@ impl State for BuySellPanel {
                             MavapayMessage::RegistrationSuccess => {
                                 self.error = None;
                                 mavapay.step = MavapayFlowStep::VerifyEmail {
-                                    email: email.value.clone(),
-                                    password: password1.value.clone(),
+                                    email: email.clone(),
+                                    password: password1.clone(),
                                     checking: false,
                                 };
                             }
@@ -428,7 +405,7 @@ impl State for BuySellPanel {
                             MavapayMessage::SendVerificationEmail => {
                                 tracing::info!("Sending verification email to: {}", email);
 
-                                let client = mavapay.coincube_client.clone();
+                                let client = self.coincube_client.clone();
                                 let email = email.clone();
 
                                 return Task::perform(
@@ -455,7 +432,7 @@ impl State for BuySellPanel {
                                 *checking = true;
 
                                 // recheck status every 10 seconds, automatic login if email is verified
-                                let client = mavapay.coincube_client.clone();
+                                let client = self.coincube_client.clone();
                                 let email = email.clone();
 
                                 return Task::perform(
@@ -486,7 +463,7 @@ impl State for BuySellPanel {
                                             }
 
                                             count = count - 1;
-                                            tokio::time::sleep(std::time::Duration::from_secs(3))
+                                            tokio::time::sleep(std::time::Duration::from_secs(10))
                                                 .await;
                                         }
                                     },
@@ -550,18 +527,10 @@ impl State for BuySellPanel {
                                 MavapayMessage::AmountChanged(a) => *amount = a,
 
                                 // TODO: Beneficiary specific form inputs
-                                // MavapayMessage::BankAccountNumberChanged(number) => {
-                                //     *bank_account_number = number
-                                // }
-                                // MavapayMessage::BankAccountNameChanged(name) => {
-                                //     *bank_account_name = name
-                                // }
-                                // MavapayMessage::BankCodeChanged(code) => *bank_code = code,
-                                // MavapayMessage::BankNameChanged(name) => *bank_name = name,
                                 MavapayMessage::CreateQuote => {
                                     if let Some(bs) = &self.buy_or_sell {
                                         return mavapay
-                                            .create_quote(&bs)
+                                            .create_quote(&bs, self.coincube_client.clone())
                                             .map(|b| Message::View(ViewMessage::BuySell(b)));
                                     } else {
                                         log::error!("Unable to create quote, buy or sell not selected by user")
