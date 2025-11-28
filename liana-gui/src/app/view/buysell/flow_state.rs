@@ -25,18 +25,12 @@ pub enum MavapayFlowStep {
     },
     ActiveBuysell {
         country: Country,
-        flow_mode: MavapayFlowMode,
+        banks: Option<MavapayBanks>,
         amount: u64,
-        source_currency: Option<MavapayUnitCurrency>,
-        target_currency: Option<MavapayUnitCurrency>,
-        settlement_currency: Option<MavapayCurrency>,
-        payment_method: MavapayPaymentMethod,
-        // TODO: replace with banks vector
-        bank_account_number: String,
-        bank_account_name: String,
-        bank_code: String,
-        bank_name: String,
+        beneficiary: Option<Beneficiary>,
+        selected_bank: Option<usize>,
         current_quote: Option<GetQuoteResponse>,
+        // TODO: Display BTC price on buysell UI
         current_price: Option<GetPriceResponse>,
     },
 }
@@ -55,7 +49,6 @@ pub struct MavapayState {
 }
 
 impl MavapayState {
-    // TODO: load api key from os keychain
     pub fn new() -> Self {
         Self {
             step: MavapayFlowStep::Login {
@@ -89,162 +82,62 @@ impl MavapayState {
         )
     }
 
-    pub fn open_payment_link(&self) -> Task<BuySellMessage> {
+    pub fn create_quote(&self, buy_or_sell: &super::panel::BuyOrSell) -> Task<BuySellMessage> {
         let MavapayFlowStep::ActiveBuysell {
-            settlement_currency,
-            payment_method,
+            country,
             amount,
+            beneficiary,
             ..
         } = &self.step
         else {
             return Task::none();
         };
 
-        let Some(settlement_currency) = settlement_currency else {
-            return Task::none();
+        let local_currency = match country.code {
+            "KE" => MavapayUnitCurrency::KenyanShillingCent,
+            "NG" => MavapayUnitCurrency::NigerianNairaKobo,
+            "ZA" => MavapayUnitCurrency::SouthAfricanRandCent,
+            iso => unreachable!("Country ({}) is unsupported by Mavapay", iso),
         };
 
-        // Get payment method
-        let request = CreatePaymentLinkRequest {
-            name: format!("Coincube Vault - {}", settlement_currency),
-            description: format!(
-                "One-time payment of {} {}, made from the Coincube Vault Bitcoin Wallet",
-                amount, settlement_currency
-            ),
-            _type: PaymentLinkType::OneTime,
-            add_fee_to_total_cost: false,
-            settlement_currency: settlement_currency.clone(),
-            payment_methods: [payment_method.clone()],
-            amount: *amount,
-            callback_url: None, // TODO: Implement callback mechanism for desktop app
-        };
-
-        let client = self.mavapay_client.clone();
-        Task::perform(
-            async move { client.create_payment_link(request).await },
-            |result| match result {
-                Ok(created) => BuySellMessage::WebviewOpenUrl(created.payment_link),
-                Err(e) => BuySellMessage::SessionError(format!("Payment link error: {}", e)),
-            },
-        )
-    }
-
-    pub fn create_quote(&self, country_iso: Option<&str>) -> Task<BuySellMessage> {
-        let MavapayFlowStep::ActiveBuysell {
-            amount,
-            source_currency,
-            target_currency,
-            bank_account_number,
-            bank_account_name,
-            bank_code,
-            bank_name,
-            payment_method,
-            ..
-        } = &self.step
-        else {
-            return Task::none();
-        };
-
-        let Some(source_currency) = source_currency else {
-            return Task::none();
-        };
-
-        let Some(target_currency) = target_currency else {
-            return Task::none();
-        };
-
-        let request = match source_currency {
-            MavapayUnitCurrency::BitcoinSatoshi => GetQuoteRequest {
+        let request = match buy_or_sell {
+            super::panel::BuyOrSell::Sell => GetQuoteRequest {
                 amount: amount.clone(),
-                source_currency: source_currency.clone(),
-                target_currency: target_currency.clone(),
-                payment_method: payment_method.clone(),
-                payment_currency: source_currency.clone(),
+                source_currency: MavapayUnitCurrency::BitcoinSatoshi,
+                target_currency: local_currency,
+                // TODO: Is direct onchain supported as a payment method? If no, then this is blocked by the breeze-sdk integration task
+                payment_method: MavapayPaymentMethod::Lightning,
+                payment_currency: MavapayUnitCurrency::BitcoinSatoshi,
                 // automatically deposit fiat funds in beneficiary account
                 autopayout: true,
                 customer_internal_fee: Some(0),
-                beneficiary: match country_iso {
-                    Some("KE") => {
-                        unimplemented!("Support for Kenyan beneficiaries is incomplete")
-                    }
-                    Some("ZA") => Some(Beneficiary::ZAR {
-                        name: bank_account_name.clone(),
-                        bank_name: bank_name.clone(),
-                        bank_account_number: bank_account_number.clone(),
-                    }),
-                    Some("NG") => Some(Beneficiary::NGN {
-                        bank_account_number: bank_account_number.clone(),
-                        bank_account_name: bank_account_name.clone(),
-                        bank_code: bank_code.clone(),
-                        bank_name: bank_name.clone(),
-                    }),
-                    iso => unreachable!("Country ({:?}) is not supported by Mavapay", iso),
-                },
+                beneficiary: beneficiary.clone(),
             },
-            fiat => {
-                unimplemented!(
-                    "Unable to create quote with fiat currency: {fiat}, currently unsupported",
-                )
-            }
+            super::panel::BuyOrSell::Buy { address } => GetQuoteRequest {
+                amount: amount.clone(),
+                source_currency: local_currency,
+                target_currency: MavapayUnitCurrency::BitcoinSatoshi,
+                payment_method: MavapayPaymentMethod::BankTransfer,
+                payment_currency: MavapayUnitCurrency::BitcoinSatoshi,
+                autopayout: true,
+                beneficiary: Some(Beneficiary::Onchain {
+                    on_chain_address: address.address.to_string(),
+                }),
+                customer_internal_fee: None,
+            },
         };
 
         // prepare request
         let client = self.mavapay_client.clone();
         let coincube_client = self.coincube_client.clone();
 
-        // Get user details
-        let user_id = self.current_user.as_ref().map(|user| user.id.to_string());
-        let bank_account_number = bank_account_number.clone();
-        let bank_account_name = bank_account_name.clone();
-        let bank_code = bank_code.clone();
-        let bank_name = bank_name.clone();
-        let payment_method = payment_method.clone();
-
         Task::perform(
             async move {
                 // Step 1: Create quote with Mavapay
                 let quote = client.create_quote(request).await?;
+                tracing::info!("[MAVAPAY] Quote created: {}", quote.id);
 
-                tracing::info!(
-                    "[MAVAPAY] Quote created: {}, hash: {:?}",
-                    quote.id,
-                    quote.hash
-                );
-
-                // Step 2: Save quote to coincube-api
-                let save_request = SaveQuoteRequest {
-                    quote_id: quote.id.clone(),
-                    hash: quote.hash.clone(),
-                    user_id,
-                    amount: quote.amount_in_source_currency,
-                    source_currency: quote.source_currency.clone(),
-                    target_currency: quote.target_currency.clone(),
-                    exchange_rate: quote.exchange_rate,
-                    usd_to_target_currency_rate: quote.usd_to_target_currency_rate,
-                    transaction_fees_in_source_currency: quote.transaction_fees_in_source_currency,
-                    transaction_fees_in_target_currency: quote.transaction_fees_in_target_currency,
-                    amount_in_source_currency: quote.amount_in_source_currency,
-                    amount_in_target_currency: quote.amount_in_target_currency,
-                    total_amount_in_source_currency: quote.total_amount_in_source_currency,
-                    total_amount_in_target_currency: quote.total_amount_in_target_currency.or(
-                        Some(
-                            quote.amount_in_target_currency
-                                + quote.transaction_fees_in_target_currency,
-                        ),
-                    ),
-                    bank_account_number: Some(bank_account_number),
-                    bank_account_name: Some(bank_account_name),
-                    bank_code: Some(bank_code),
-                    bank_name: Some(bank_name),
-                    payment_method,
-                };
-
-                coincube_client
-                    .save_quote(save_request)
-                    .await
-                    .map_err(|e| {
-                        MavapayError::Http(None, format!("Failed to save quote: {}", e))
-                    })?;
+                // TODO: Save quote to coincube-api (Step 2)
 
                 // Step 3: Build quote display URL using quote_id
                 let url = coincube_client.get_quote_display_url(&quote.id);
@@ -256,30 +149,5 @@ impl MavapayState {
                 Err(e) => BuySellMessage::SessionError(e.to_string()),
             },
         )
-    }
-}
-
-/// Mavapay flow mode selection
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MavapayFlowMode {
-    CreateQuote,
-    OneTimePayment,
-}
-
-impl MavapayFlowMode {
-    pub fn all() -> &'static [MavapayFlowMode] {
-        &[
-            MavapayFlowMode::CreateQuote,
-            MavapayFlowMode::OneTimePayment,
-        ]
-    }
-}
-
-impl std::fmt::Display for MavapayFlowMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MavapayFlowMode::CreateQuote => write!(f, "Create Quote"),
-            MavapayFlowMode::OneTimePayment => write!(f, "One-time Payment"),
-        }
     }
 }

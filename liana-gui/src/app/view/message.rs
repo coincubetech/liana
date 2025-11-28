@@ -154,8 +154,8 @@ pub enum BuySellMessage {
     // state management
     SessionError(String),
     ResetWidget,
-    SetBuyOrSell(super::buysell::panel::BuyOrSell),
-    StartOnramperSession,
+    SetBuyOrSell(bool), // true = buy, false = sell
+    StartSession,
 
     // recipient address generation
     CreateNewAddress,
@@ -167,7 +167,7 @@ pub enum BuySellMessage {
     // webview logic
     WebviewOpenUrl(String),
     WryMessage(iced_wry::IcedWryMessage),
-    StarWryWebviewWithUrl(iced_wry::ExtractedWindowId, String),
+    StartWryWebviewWithUrl(iced_wry::ExtractedWindowId, String),
 
     // Mavapay specific messages
     Mavapay(MavapayMessage),
@@ -192,26 +192,20 @@ pub enum MavapayMessage {
     SendVerificationEmail,
     CheckEmailVerificationStatus,
     EmailVerificationFailed,
-    // login to existing mavapay account
+    // Login to coincube account
     LoginUsernameChanged(String),
     LoginPasswordChanged(String),
     SubmitLogin {
         skip_email_verification: bool,
     },
     CreateNewAccount,
-    // buysell flow
-    FlowModeChanged(crate::app::view::buysell::flow_state::MavapayFlowMode),
+    // Active Flow
     AmountChanged(u64),
-    SourceCurrencyChanged(crate::services::mavapay::MavapayUnitCurrency),
-    TargetCurrencyChanged(crate::services::mavapay::MavapayUnitCurrency),
-    SettlementCurrencyChanged(crate::services::mavapay::MavapayCurrency),
     PaymentMethodChanged(crate::services::mavapay::MavapayPaymentMethod),
     BankAccountNumberChanged(String),
     BankAccountNameChanged(String),
-    BankCodeChanged(String),
-    BankNameChanged(String),
+    BankSelected(usize),
     CreateQuote,
-    OpenPaymentLink,
     GetPrice,
     PriceReceived(GetPriceResponse),
 }

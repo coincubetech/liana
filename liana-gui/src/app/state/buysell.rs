@@ -9,13 +9,7 @@ use crate::{
         menu::Menu,
         message::Message,
         state::State,
-        view::{
-            self,
-            buysell::{
-                flow_state::MavapayFlowMode, BuySellFlowState, BuySellPanel, MavapayFlowStep,
-            },
-            BuySellMessage, MavapayMessage, Message as ViewMessage,
-        },
+        view::{self, buysell::*, BuySellMessage, MavapayMessage, Message as ViewMessage},
     },
     daemon::Daemon,
     services::mavapay::*,
@@ -43,19 +37,17 @@ impl State for BuySellPanel {
         message: Message,
     ) -> Task<Message> {
         let message = match message {
+            Message::View(ViewMessage::BuySell(message)) => message,
             // modal for any generated address
             Message::View(ViewMessage::Select(_)) => {
-                if let BuySellFlowState::AddressGeneration {
-                    address: Some(la), ..
-                } = &self.flow_state
-                {
+                if let Some(panel::BuyOrSell::Buy { address }) = &self.buy_or_sell {
                     self.modal = super::vault::receive::Modal::VerifyAddress(
                         super::vault::receive::VerifyAddressModal::new(
                             cache.datadir_path.clone(),
                             self.wallet.clone(),
                             cache.network,
-                            la.address.clone(),
-                            la.index,
+                            address.address.clone(),
+                            address.index,
                         ),
                     );
                 };
@@ -63,12 +55,9 @@ impl State for BuySellPanel {
                 return Task::none();
             }
             Message::View(ViewMessage::ShowQrCode(_)) => {
-                if let BuySellFlowState::AddressGeneration {
-                    address: Some(la), ..
-                } = &self.flow_state
-                {
+                if let Some(panel::BuyOrSell::Buy { address }) = &self.buy_or_sell {
                     if let Some(modal) =
-                        super::vault::receive::ShowQrCodeModal::new(&la.address, la.index)
+                        super::vault::receive::ShowQrCodeModal::new(&address.address, address.index)
                     {
                         self.modal = super::vault::receive::Modal::ShowQrCode(modal);
                     }
@@ -80,7 +69,6 @@ impl State for BuySellPanel {
                 self.modal = super::vault::receive::Modal::None;
                 return Task::none();
             }
-            Message::View(ViewMessage::BuySell(message)) => message,
             _ => return Task::none(),
         };
 
@@ -94,22 +82,21 @@ impl State for BuySellPanel {
                     _ => BuySellFlowState::AddressGeneration {
                         buy_or_sell: None,
                         data_dir: cache.datadir_path.clone(),
-                        address: None,
                     },
                 };
 
                 self.flow_state = flow_state;
                 self.error = None;
             }
+
+            // creates a new address for bitcoin deposit
             BuySellMessage::SetBuyOrSell(bs) => {
                 if let BuySellFlowState::AddressGeneration { buy_or_sell, .. } =
                     &mut self.flow_state
                 {
-                    *buy_or_sell = Some(bs);
+                    *buy_or_sell = Some(bs)
                 }
             }
-
-            // creates a new address for bitcoin deposit
             BuySellMessage::CreateNewAddress => {
                 return Task::perform(
                     async move { daemon.get_new_address().await },
@@ -127,14 +114,8 @@ impl State for BuySellPanel {
                     },
                 )
             }
-            BuySellMessage::AddressCreated(addresses) => {
-                if let BuySellFlowState::AddressGeneration {
-                    address: generated_address,
-                    ..
-                } = &mut self.flow_state
-                {
-                    *generated_address = Some(addresses);
-                }
+            BuySellMessage::AddressCreated(address) => {
+                self.buy_or_sell = Some(panel::BuyOrSell::Buy { address })
             }
 
             // ip-geolocation logic
@@ -178,16 +159,10 @@ impl State for BuySellPanel {
 
                             mavapay.step = MavapayFlowStep::ActiveBuysell {
                                 country: country.clone(),
-                                flow_mode: MavapayFlowMode::CreateQuote,
+                                banks: None,
                                 amount: 60,
-                                source_currency: None,
-                                target_currency: None,
-                                settlement_currency: None,
-                                payment_method: MavapayPaymentMethod::Lightning,
-                                bank_account_number: String::new(),
-                                bank_account_name: String::new(),
-                                bank_code: String::new(),
-                                bank_name: String::new(),
+                                beneficiary: None,
+                                selected_bank: None,
                                 current_quote: None,
                                 current_price: None,
                             };
@@ -199,32 +174,19 @@ impl State for BuySellPanel {
                     self.flow_state = BuySellFlowState::AddressGeneration {
                         buy_or_sell: None,
                         data_dir: cache.datadir_path.clone(),
-                        address: None,
                     };
                 }
 
                 // update location information
                 tracing::info!("Country = {}, ISO = {}", country.name, country.code);
                 self.detected_country = Some(country);
+
+                // TODO: get banks for mavapay state
+                if matches!(&self.flow_state, BuySellFlowState::Mavapay(..)) {}
             }
 
             // session management
-            BuySellMessage::StartOnramperSession => {
-                let BuySellFlowState::AddressGeneration {
-                    buy_or_sell,
-                    address: generated_address,
-                    ..
-                } = &self.flow_state
-                else {
-                    return Task::none();
-                };
-
-                let mode = match buy_or_sell {
-                    Some(view::buysell::panel::BuyOrSell::Buy) => "buy",
-                    Some(view::buysell::panel::BuyOrSell::Sell) => "sell",
-                    None => return Task::none(),
-                };
-
+            BuySellMessage::StartSession => {
                 let Some(iso_code) = self.detected_country.as_ref().map(|c| c.code) else {
                     tracing::warn!(
                         "Unable to start session, country selection|detection was unsuccessful"
@@ -241,15 +203,29 @@ impl State for BuySellPanel {
                     return Task::none();
                 };
 
-                // prepare parameters
-                let address = generated_address.as_ref().map(|a| a.address.to_string());
+                // create onramper widget url and start session
+                let url = match &self.buy_or_sell {
+                    Some(view::buysell::panel::BuyOrSell::Buy { address }) => {
+                        let address = address.address.to_string();
+                        crate::app::buysell::onramper::create_widget_url(
+                            &currency,
+                            Some(&address),
+                            "buy",
+                            self.network,
+                        )
+                    }
+                    Some(view::buysell::panel::BuyOrSell::Sell) => {
+                        crate::app::buysell::onramper::create_widget_url(
+                            &currency,
+                            None,
+                            "sell",
+                            self.network,
+                        )
+                    }
+                    None => return Task::none(),
+                };
 
-                let start = match crate::app::buysell::onramper::create_widget_url(
-                    &currency,
-                    address.as_deref(),
-                    &mode,
-                    self.network,
-                ) {
+                return match url {
                     Ok(url) => Task::done(BuySellMessage::WebviewOpenUrl(url)),
                     Err(error) => {
                         tracing::error!("[ONRAMPER] Error: {}", error);
@@ -257,8 +233,6 @@ impl State for BuySellPanel {
                     }
                 }
                 .map(|m| Message::View(ViewMessage::BuySell(m)));
-
-                return start;
             }
             BuySellMessage::SessionError(error) => {
                 self.error = Some(error);
@@ -337,18 +311,6 @@ impl State for BuySellPanel {
 
                             log::info!("Successfully logged in user: {}", &login.user.email);
 
-                            // initialize location information for user
-                            let iso = self.detected_country.as_ref().map(|c| c.code);
-                            let source_currency = match iso {
-                                Some("NG") => Some(MavapayUnitCurrency::NigerianNairaKobo),
-                                Some("KE") => Some(MavapayUnitCurrency::KenyanShillingCent),
-                                Some("ZA") => Some(MavapayUnitCurrency::SouthAfricanRandCent),
-                                c => {
-                                    log::error!("Country: {:?} is not supported by mavapay", c);
-                                    None
-                                }
-                            };
-
                             // store token in OS keyring
                             if let Ok(entry) = keyring::Entry::new("io.coincube.Vault", "vault") {
                                 if let Err(e) = entry.set_password(&login.token) {
@@ -375,16 +337,10 @@ impl State for BuySellPanel {
 
                             mavapay.step = MavapayFlowStep::ActiveBuysell {
                                 country: self.detected_country.clone().unwrap(),
-                                flow_mode: MavapayFlowMode::CreateQuote,
+                                banks: None,
                                 amount: 60,
-                                source_currency,
-                                target_currency: None,
-                                settlement_currency: None,
-                                payment_method: MavapayPaymentMethod::Lightning,
-                                bank_account_number: String::new(),
-                                bank_account_name: String::new(),
-                                bank_code: String::new(),
-                                bank_name: String::new(),
+                                beneficiary: None,
+                                selected_bank: None,
                                 current_quote: None,
                                 current_price: None,
                             };
@@ -584,67 +540,49 @@ impl State for BuySellPanel {
                         // active buysell form
                         (
                             MavapayFlowStep::ActiveBuysell {
-                                flow_mode,
                                 amount,
-                                source_currency,
-                                target_currency,
-                                settlement_currency,
-                                payment_method,
-                                bank_account_number,
-                                bank_account_name,
-                                bank_code,
-                                bank_name,
                                 current_price,
                                 ..
                             },
                             msg,
-                        ) => match msg {
-                            MavapayMessage::FlowModeChanged(mode) => *flow_mode = mode,
-                            MavapayMessage::AmountChanged(a) => *amount = a,
-                            MavapayMessage::SourceCurrencyChanged(currency) => {
-                                *source_currency = Some(currency)
+                        ) => {
+                            match msg {
+                                MavapayMessage::AmountChanged(a) => *amount = a,
+
+                                // TODO: Beneficiary specific form inputs
+                                // MavapayMessage::BankAccountNumberChanged(number) => {
+                                //     *bank_account_number = number
+                                // }
+                                // MavapayMessage::BankAccountNameChanged(name) => {
+                                //     *bank_account_name = name
+                                // }
+                                // MavapayMessage::BankCodeChanged(code) => *bank_code = code,
+                                // MavapayMessage::BankNameChanged(name) => *bank_name = name,
+                                MavapayMessage::CreateQuote => {
+                                    if let Some(bs) = &self.buy_or_sell {
+                                        return mavapay
+                                            .create_quote(&bs)
+                                            .map(|b| Message::View(ViewMessage::BuySell(b)));
+                                    } else {
+                                        log::error!("Unable to create quote, buy or sell not selected by user")
+                                    }
+                                }
+
+                                MavapayMessage::PriceReceived(price) => {
+                                    *current_price = Some(price);
+                                }
+                                MavapayMessage::GetPrice => {
+                                    return mavapay
+                                        .get_price(self.detected_country.as_ref().map(|c| c.code))
+                                        .map(|b| Message::View(ViewMessage::BuySell(b)))
+                                }
+                                msg => log::warn!(
+                                    "Current {:?} has ignored message: {:?}",
+                                    &mavapay.step,
+                                    msg
+                                ),
                             }
-                            MavapayMessage::TargetCurrencyChanged(currency) => {
-                                *target_currency = Some(currency)
-                            }
-                            MavapayMessage::SettlementCurrencyChanged(currency) => {
-                                *settlement_currency = Some(currency)
-                            }
-                            MavapayMessage::PaymentMethodChanged(method) => {
-                                *payment_method = method
-                            }
-                            MavapayMessage::BankAccountNumberChanged(number) => {
-                                *bank_account_number = number
-                            }
-                            MavapayMessage::BankAccountNameChanged(name) => {
-                                *bank_account_name = name
-                            }
-                            MavapayMessage::PriceReceived(price) => {
-                                *current_price = Some(price);
-                            }
-                            MavapayMessage::BankCodeChanged(code) => *bank_code = code,
-                            MavapayMessage::BankNameChanged(name) => *bank_name = name,
-                            MavapayMessage::CreateQuote => {
-                                return mavapay
-                                    .create_quote(self.detected_country.as_ref().map(|c| c.code))
-                                    .map(|b| Message::View(ViewMessage::BuySell(b)))
-                            }
-                            MavapayMessage::OpenPaymentLink => {
-                                return mavapay
-                                    .open_payment_link()
-                                    .map(|b| Message::View(ViewMessage::BuySell(b)))
-                            }
-                            MavapayMessage::GetPrice => {
-                                return mavapay
-                                    .get_price(self.detected_country.as_ref().map(|c| c.code))
-                                    .map(|b| Message::View(ViewMessage::BuySell(b)))
-                            }
-                            msg => log::warn!(
-                                "Current {:?} has ignored message: {:?}",
-                                &mavapay.step,
-                                msg
-                            ),
-                        },
+                        }
                     }
                 } else {
                     log::warn!("Ignoring MavapayMessage: {:?}, BuySell Panel is currently not in Mavapay state", msg);
@@ -656,13 +594,12 @@ impl State for BuySellPanel {
             BuySellMessage::WebviewOpenUrl(url) => {
                 // extract the main window's raw_window_handle
                 return iced_wry::IcedWebviewManager::extract_window_id(None).map(move |w| {
-                    Message::View(ViewMessage::BuySell(BuySellMessage::StarWryWebviewWithUrl(
-                        w,
-                        url.clone(),
-                    )))
+                    Message::View(ViewMessage::BuySell(
+                        BuySellMessage::StartWryWebviewWithUrl(w, url.clone()),
+                    ))
                 });
             }
-            BuySellMessage::StarWryWebviewWithUrl(id, url) => {
+            BuySellMessage::StartWryWebviewWithUrl(id, url) => {
                 let webview = self.webview_manager.new_webview(
                     iced_wry::wry::WebViewAttributes {
                         url: Some(url),

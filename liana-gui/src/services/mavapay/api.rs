@@ -126,15 +126,6 @@ impl MavapayUnitCurrency {
             MavapayUnitCurrency::BitcoinSatoshi => "Satoshi",
         }
     }
-
-    pub(crate) fn all() -> &'static [MavapayUnitCurrency] {
-        &[
-            MavapayUnitCurrency::KenyanShillingCent,
-            MavapayUnitCurrency::SouthAfricanRandCent,
-            MavapayUnitCurrency::NigerianNairaKobo,
-            MavapayUnitCurrency::BitcoinSatoshi,
-        ]
-    }
 }
 
 impl std::fmt::Display for MavapayUnitCurrency {
@@ -154,12 +145,14 @@ pub enum MavapayPaymentMethod {
     Lightning,
     BankTransfer,
     NgnBankTransfer,
+    Onchain,
 }
 
 impl std::fmt::Display for MavapayPaymentMethod {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MavapayPaymentMethod::Lightning => write!(f, "Bitcoin Lightning"),
+            MavapayPaymentMethod::Onchain => write!(f, "Bitcoin Mainnet Transaction"),
             MavapayPaymentMethod::BankTransfer => write!(f, "Bank Transfer"),
             MavapayPaymentMethod::NgnBankTransfer => write!(f, "Nigerian Bank Transfer"),
         }
@@ -172,11 +165,12 @@ impl MavapayPaymentMethod {
             MavapayPaymentMethod::Lightning,
             MavapayPaymentMethod::BankTransfer,
             MavapayPaymentMethod::NgnBankTransfer,
+            MavapayPaymentMethod::Onchain,
         ]
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all_fields = "camelCase")]
 #[serde(untagged)]
 pub enum Beneficiary {
@@ -200,7 +194,7 @@ pub enum Beneficiary {
     KES(KenyanBeneficiary),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
 #[serde(rename_all_fields = "camelCase")]
 #[serde(tag = "identifierType", content = "identifiers")]
@@ -212,6 +206,21 @@ pub enum KenyanBeneficiary {
         paybill_number: String,
         account_number: String,
     },
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all_fields = "camelCase")]
+#[serde(untagged)]
+pub enum MavapayBanks {
+    Nigerian(Vec<NigerianBank>),
+    SouthAfrican(Vec<String>),
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NigerianBank {
+    pub bank_name: String,
+    pub nip_bank_code: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
