@@ -176,8 +176,12 @@ impl BuySellPanel {
                     coincube_core::miniscript::bitcoin::Network::Testnet4 => {
                         ("Bitcoin Testnet4", color::ORANGE)
                     }
-                    coincube_core::miniscript::bitcoin::Network::Signet => ("Bitcoin Signet", color::BLUE),
-                    coincube_core::miniscript::bitcoin::Network::Regtest => ("Bitcoin Regtest", color::RED),
+                    coincube_core::miniscript::bitcoin::Network::Signet => {
+                        ("Bitcoin Signet", color::BLUE)
+                    }
+                    coincube_core::miniscript::bitcoin::Network::Regtest => {
+                        ("Bitcoin Regtest", color::RED)
+                    }
                 };
 
                 iced::widget::row![
@@ -203,11 +207,11 @@ impl BuySellPanel {
         buy_or_sell: Option<BuyOrSell>,
         generated: Option<LabelledAddress>,
     ) -> Column<'a, ViewMessage> {
-        use iced::widget::scrollable;
         use coincube_ui::component::{
             button, card,
             text::{p2_regular, Text},
         };
+        use iced::widget::scrollable;
 
         let mut column = Column::new();
         column = match generated.as_ref() {
@@ -300,7 +304,9 @@ impl BuySellPanel {
                                 BuyOrSell::Sell,
                             )))
                             .style(move |th, st| match buy_or_sell {
-                                Some(BuyOrSell::Sell) => coincube_ui::theme::button::primary(th, st),
+                                Some(BuyOrSell::Sell) => {
+                                    coincube_ui::theme::button::primary(th, st)
+                                }
                                 _ => coincube_ui::theme::button::secondary(th, st),
                             })
                             .padding(30)
