@@ -12,6 +12,7 @@ resolver = "2"
 [features]
 default = []
 buysell = ["dep:iced_wry"]
+debug = ["iced/hot", "coincube-ui/debug"]
 
 [package.metadata.winres]
 LegalCopyright = "Copyright © 2025"
@@ -33,7 +34,7 @@ backtrace = "0.3"
 hex = "0.4.3"
 dotenv = "0.15"
 
-iced = { version = "0.13.1", default-features = false, features = [
+iced = { version = "0.14.0", default-features = false, features = [
 	"tokio",
 	"svg",
 	"canvas",
@@ -42,10 +43,12 @@ iced = { version = "0.13.1", default-features = false, features = [
 	"advanced",
 	"wgpu",
 	"tiny-skia",
+	"wayland",
+	"sipper"
 ] }
 image = { version = "*", default-features = false, features = ["png"] }
-iced_aw = { version = "0.12.2", features = ["context_menu"] }
-iced_runtime = "0.13.1"
+iced_aw = { version = "0.13.0", features = ["context_menu"] }
+iced_runtime = "0.14.0"
 
 # Webview for embedded browser functionality (wry-based)
 iced_wry = { git = "https://github.com/sokorototo/iced_wry", optional = true }

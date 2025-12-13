@@ -32,19 +32,19 @@ fn login_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> {
     iced::widget::column![
         // header
         text::h3("Sign in to your account").color(color::WHITE),
-        Space::with_height(Length::Fixed(35.0)),
+        Space::new().height(Length::Fixed(35.0)),
         // input fields
         text_input("Email", email)
             .on_input(|e| BuySellMessage::Mavapay(MavapayMessage::LoginUsernameChanged(e)))
             .size(16)
             .padding(15),
-        Space::with_height(Length::Fixed(5.0)),
+        Space::new().height(Length::Fixed(5.0)),
         text_input("Password", password)
             .secure(true)
             .on_input(|p| BuySellMessage::Mavapay(MavapayMessage::LoginPasswordChanged(p)))
             .size(16)
             .padding(15),
-        Space::with_height(Length::Fixed(15.0)),
+        Space::new().height(Length::Fixed(15.0)),
         // submit button
         button::primary(None, "Log In")
             .on_press_maybe(
@@ -55,11 +55,11 @@ fn login_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> {
                 ),
             )
             .width(Length::Fill),
-        Space::with_height(Length::Fixed(10.0)),
+        Space::new().height(Length::Fixed(10.0)),
         // separator
         container(Space::new(iced::Length::Fill, iced::Length::Fixed(3.0)))
             .style(|_| { color::GREY_6.into() }),
-        Space::with_height(Length::Fixed(5.0)),
+        Space::new().height(Length::Fixed(5.0)),
         // sign-up redirect
         iced::widget::button(
             text::p2_regular("Don't have an account? Sign up").color(color::BLUE),
@@ -85,9 +85,9 @@ fn password_reset_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage
     };
 
     iced::widget::column![
-        Space::with_height(Length::Fixed(15.0)),
+        Space::new().height(Length::Fixed(15.0)),
         text::p1_bold("Password Reset Form"),
-        Space::with_height(Length::Fixed(10.0)),
+        Space::new().height(Length::Fixed(10.0)),
         iced::widget::row![
             container(email_icon().color(color::BLACK).size(20))
                 .style(|_| {
@@ -142,11 +142,11 @@ fn password_reset_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage
     ]
     .push(
         iced::widget::column![
-            Space::with_height(Length::Fixed(10.0)),
+            Space::new().height(Length::Fixed(10.0)),
             // separator
             container(Space::new(iced::Length::Fill, iced::Length::Fixed(2.0)))
                 .style(|_| { color::GREY_7.into() }),
-            Space::with_height(Length::Fixed(10.0)),
+            Space::new().height(Length::Fixed(10.0)),
             match sent {
                 // log-in redirect
                 true => iced::widget::button(
@@ -189,7 +189,7 @@ fn registration_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> 
         Button::new(
             Row::new()
                 .push(previous_icon().color(color::GREY_2))
-                .push(Space::with_width(Length::Fixed(5.0)))
+                .push(Space::new().width(Length::Fixed(5.0)))
                 .push(text::p1_medium("Previous").color(color::GREY_2))
                 .spacing(5)
                 .align_y(Alignment::Center),
@@ -201,7 +201,7 @@ fn registration_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> 
             shadow: iced::Shadow::default(),
         })
         .on_press(BuySellMessage::ResetWidget),
-        Space::with_height(Length::Fixed(10.0)),
+        Space::new().height(Length::Fixed(10.0)),
         // Title and subtitle
         iced::widget::column![
             text::h3("Create an Account").color(color::WHITE),
@@ -209,7 +209,7 @@ fn registration_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> 
         ]
         .spacing(10)
         .align_x(Alignment::Center),
-        Space::with_height(Length::Fixed(20.0)),
+        Space::new().height(Length::Fixed(20.0)),
         // Name Input
         text_input("Full Legal Name: ", legal_name).on_input(|v| BuySellMessage::Mavapay(MavapayMessage::LegalNameChanged(v)))
             .width(Length::Fill)
@@ -221,7 +221,7 @@ fn registration_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> 
         })
         .size(16)
         .padding(15),
-        Space::with_height(Length::Fixed(10.0)),
+        Space::new().height(Length::Fixed(10.0)),
         // Password Inputs
         text_input("Password", password1).on_input(|v| {
             BuySellMessage::Mavapay(MavapayMessage::Password1Changed(v))
@@ -236,7 +236,7 @@ fn registration_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> 
         .size(16)
         .padding(15)
         .secure(true),
-        Space::with_height(Length::Fixed(20.0)),
+        Space::new().height(Length::Fixed(20.0)),
         button::primary(None, "Create Account")
             .on_press_maybe(
                 (!legal_name.is_empty() && email.contains('.') &&  email.contains('@')  && !password1.is_empty() && (password1 == password2))
@@ -266,7 +266,7 @@ fn email_verification_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMes
             Button::new(
                 Row::new()
                     .push(previous_icon().color(color::GREY_2))
-                    .push(Space::with_width(Length::Fixed(5.0)))
+                    .push(Space::new().width(Length::Fixed(5.0)))
                     .push(text("Previous").color(color::GREY_2))
                     .spacing(5)
                     .align_y(Alignment::Center),
@@ -312,7 +312,7 @@ fn email_verification_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMes
                     ))
                     .width(Length::FillPortion(1)),
             )
-            .push(Space::with_width(Length::Fixed(10.0)))
+            .push(Space::new().width(Length::Fixed(10.0)))
             .push(
                 button::primary(Some(email_icon()), "Resend Email").on_press(
                     BuySellMessage::Mavapay(MavapayMessage::SendVerificationEmail),
@@ -324,11 +324,11 @@ fn email_verification_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMes
 
     iced::widget::column![
         top_bar,
-        Space::with_height(Length::Fixed(10.0)),
+        Space::new().height(Length::Fixed(10.0)),
         title,
-        Space::with_height(Length::Fixed(30.0)),
+        Space::new().height(Length::Fixed(30.0)),
         email_display,
-        Space::with_height(Length::Fixed(30.0)),
+        Space::new().height(Length::Fixed(30.0)),
         action_buttons,
     ]
     .align_x(Alignment::Center)
@@ -351,14 +351,14 @@ fn transactions_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> 
     };
 
     let header = iced::widget::row![
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
         text::h4_bold("Bitcoin ↔ Fiat Exchange").color(color::WHITE),
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
     ]
     .align_y(Alignment::Center);
 
     // Current price display
-    let mut price_display = iced::widget::column![header, Space::with_height(Length::Fixed(20.0))];
+    let mut price_display = iced::widget::column![header, Space::new().height(Length::Fixed(20.0))];
 
     // TODO: Replace with realtime BTC-fiat conversion display
     if let Some(price) = current_price {
@@ -375,7 +375,7 @@ fn transactions_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> 
                             .size(16)
                             .color(color::WHITE),
                         )
-                        .push(Space::with_width(Length::Fill))
+                        .push(Space::new().width(Length::Fill))
                         .push(bitcoin_icon().size(20).color(color::ORANGE))
                         .align_y(Alignment::Center),
                 )
@@ -383,15 +383,15 @@ fn transactions_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> 
                 .style(theme::card::simple)
                 .width(Length::Fixed(600.0)), // Match form width
             )
-            .push(Space::with_height(Length::Fixed(15.0)));
+            .push(Space::new().height(Length::Fixed(15.0)));
     }
 
     // Exchange form with payment mode radio buttons
     let beneficiary_input_form = iced::widget::column![
-        Space::with_height(Length::Fixed(15.0)),
+        Space::new().height(Length::Fixed(15.0)),
         // Amount field (common to both modes)
         text("Amount in BTCSAT").size(14).color(color::GREY_3),
-        Space::with_height(Length::Fixed(5.0)),
+        Space::new().height(Length::Fixed(5.0)),
         Container::new(
             iced_aw::number_input(amount, .., |a| {
                 BuySellMessage::Mavapay(MavapayMessage::AmountChanged(a))
@@ -404,12 +404,12 @@ fn transactions_form<'a>(state: &'a MavapayState) -> Column<'a, BuySellMessage> 
         match buy_or_sell {
             BuyOrSell::Buy { address: _ } => {
                 // TODO: display input amount, generated address and bank deposit details.
-                Space::with_height(0)
+                Space::new().height(0)
             }
             BuyOrSell::Sell => {
                 // TODO: display onchain bitcoin address for deposit, and beneficiary input forms
                 // TODO: If country uses BankTransfer, render banks selector dropdown
-                Space::with_height(0)
+                Space::new().height(0)
             }
         },
         button::primary(None, "Process Payment")

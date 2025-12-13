@@ -316,17 +316,13 @@ impl HardwareWallets {
     }
 
     pub fn refresh(&self) -> iced::Subscription<HardwareWalletMessage> {
-        iced::Subscription::run_with_id(
-            format!("refresh-{}", self.network),
-            refresh(State {
-                network: self.network,
-                keys_aliases: self.aliases.clone(),
-                wallet: self.wallet.clone(),
-                connected_supported_hws: Vec::new(),
-                api: None,
-                datadir_path: self.datadir_path.clone(),
-            }),
-        )
+        let state = RefreshState {
+            network: self.network,
+            keys_aliases: self.aliases.clone(),
+            wallet: self.wallet.clone(),
+            datadir_path: self.datadir_path.clone(),
+        };
+        iced::Subscription::run_with(state, make_refresh_stream)
     }
 }
 
@@ -376,6 +372,22 @@ async fn unlock_bitbox(
     }
 }
 
+/// State for hardware wallet refresh subscription.
+/// Implements Hash based only on network for subscription identity.
+struct RefreshState {
+    network: Network,
+    keys_aliases: HashMap<Fingerprint, String>,
+    wallet: Option<Arc<Wallet>>,
+    datadir_path: CoincubeDirectory,
+}
+
+impl std::hash::Hash for RefreshState {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // Only hash network for subscription identity
+        self.network.hash(state);
+    }
+}
+
 struct State {
     network: Network,
     keys_aliases: HashMap<Fingerprint, String>,
@@ -385,8 +397,21 @@ struct State {
     datadir_path: CoincubeDirectory,
 }
 
+/// Function pointer for Subscription::run_with - creates the refresh stream from RefreshState
+fn make_refresh_stream(rs: &RefreshState) -> impl Stream<Item = HardwareWalletMessage> {
+    let state = State {
+        network: rs.network,
+        keys_aliases: rs.keys_aliases.clone(),
+        wallet: rs.wallet.clone(),
+        connected_supported_hws: Vec::new(),
+        api: None,
+        datadir_path: rs.datadir_path.clone(),
+    };
+    refresh(state)
+}
+
 fn refresh(mut state: State) -> impl Stream<Item = HardwareWalletMessage> {
-    iced::stream::channel(100, move |mut output| async move {
+    iced::stream::channel(100, async move |mut output| {
         loop {
             let api = if let Some(api) = &mut state.api {
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;

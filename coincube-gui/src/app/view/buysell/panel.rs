@@ -96,7 +96,7 @@ impl BuySellPanel {
     pub fn view<'a>(&'a self) -> iced::Element<'a, ViewMessage, coincube_ui::theme::Theme> {
         let column = {
             let column = Column::new()
-                .push(Space::with_height(60))
+                .push(Space::new().height(60))
                 // COINCUBE branding
                 .push(
                     Row::new()
@@ -106,7 +106,7 @@ impl BuySellPanel {
                                 .push(text::h4_bold("CUBE").color(color::WHITE))
                                 .spacing(0),
                         )
-                        .push(Space::with_width(Length::Fixed(8.0)))
+                        .push(Space::new().width(Length::Fixed(8.0)))
                         .push(text::h5_regular("BUY/SELL").color(color::GREY_3))
                         .align_y(Alignment::Center),
                 )
@@ -119,7 +119,7 @@ impl BuySellPanel {
                 .push_maybe(
                     self.error
                         .is_some()
-                        .then(|| Space::with_height(Length::Fixed(20.0))),
+                        .then(|| Space::new().height(Length::Fixed(20.0))),
                 )
                 // render flow state
                 .push({
@@ -169,7 +169,7 @@ impl BuySellPanel {
         iced::widget::column![
             webview.view(Length::Fixed(640.0), Length::Fixed(600.0)),
             // Network display banner
-            Space::with_height(Length::Fixed(15.0)),
+            Space::new().height(Length::Fixed(15.0)),
             {
                 let (network_name, network_color) = match network {
                     coincube_core::miniscript::bitcoin::Network::Bitcoin => {
@@ -194,7 +194,7 @@ impl BuySellPanel {
                     text("Network: ").size(12).color(color::GREY_3),
                     text(network_name).size(12).color(network_color),
                     // render a button that closes the webview
-                    Space::with_width(Length::Fixed(20.0)),
+                    Space::new().width(Length::Fixed(20.0)),
                     {
                         button::secondary(Some(arrow_back()), "Start Over")
                             .on_press(ViewMessage::BuySell(BuySellMessage::ResetWidget))
@@ -231,14 +231,14 @@ impl BuySellPanel {
                                 Container::new(
                                     scrollable(
                                         Column::new()
-                                            .push(Space::with_height(Length::Fixed(10.0)))
+                                            .push(Space::new().height(Length::Fixed(10.0)))
                                             .push(
                                                 p2_regular(&address_text)
                                                     .small()
                                                     .style(theme::text::secondary),
                                             )
                                             // Space between the address and the scrollbar
-                                            .push(Space::with_height(Length::Fixed(10.0))),
+                                            .push(Space::new().height(Length::Fixed(10.0))),
                                     )
                                     .direction(
                                         scrollable::Direction::Horizontal(
@@ -254,7 +254,7 @@ impl BuySellPanel {
                                         button::secondary(None, "Verify on hardware device")
                                             .on_press(ViewMessage::Select(0)),
                                     )
-                                    .push(Space::with_width(Length::Fill))
+                                    .push(Space::new().width(Length::Fill))
                                     .push(
                                         Button::new(qr_code_icon().style(theme::text::secondary))
                                             .on_press(ViewMessage::ShowQrCode(0))
@@ -317,7 +317,7 @@ impl BuySellPanel {
                         .padding(5)
                 })
                 .push(
-                    iced::widget::container(Space::with_height(1))
+                    iced::widget::container(Space::new().height(1))
                         .style(|_| {
                             iced::widget::container::background(iced::Background::Color(
                                 color::GREY_6,
@@ -369,9 +369,9 @@ impl BuySellPanel {
                 .align_x(Alignment::Center)
                 .width(Length::Fill),
             false => Column::new()
-                .push(Space::with_height(Length::Fixed(30.0)))
+                .push(Space::new().height(Length::Fixed(30.0)))
                 .push(text::p1_bold("Detecting your location...").color(color::WHITE))
-                .push(Space::with_height(Length::Fixed(20.0)))
+                .push(Space::new().height(Length::Fixed(20.0)))
                 .push(text("Please wait...").size(14).color(color::GREY_3))
                 .align_x(Alignment::Center)
                 .spacing(10)
